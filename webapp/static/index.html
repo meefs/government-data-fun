@@ -15,8 +15,8 @@
             --accent-dim: #00b894;
             --accent-glow: rgba(0,212,170,0.12);
             --text-primary: #c9d1d9;
-            --text-secondary: #8b949e;
-            --text-muted: #484f58;
+            --text-secondary: #9ca8b4;
+            --text-muted: #5a6370;
             --border: #1c2030;
             --border-bright: #2a3040;
             --success: #2dd4a0;
@@ -61,7 +61,7 @@
         .sidebar-header p {
             font-family: var(--mono);
             font-size: 10px;
-            color: var(--text-muted);
+            color: #6b7685;
             margin-top: 4px;
             letter-spacing: 0.5px;
         }
@@ -78,7 +78,7 @@
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 1.5px;
-            color: var(--text-muted);
+            color: #6b7685;
             padding: 14px 10px 4px;
             border-top: 1px solid var(--border);
         }
@@ -92,21 +92,22 @@
             cursor: pointer;
             font-family: var(--mono);
             font-size: 11px;
-            color: var(--text-secondary);
+            color: #b0b8c4;
             transition: all 0.1s;
             margin-bottom: 1px;
             border-left: 2px solid transparent;
         }
-        .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); border-left-color: var(--text-muted); }
-        .nav-item.active { background: var(--accent-glow); color: var(--accent); border-left-color: var(--accent); }
+        .nav-item:hover { background: var(--bg-hover); color: #dde3ea; border-left-color: var(--text-muted); }
+        .nav-item.active { background: var(--accent-glow); color: var(--accent); border-left-color: var(--accent); font-weight: 500; }
         .nav-item .badge {
             margin-left: auto;
             font-family: var(--mono);
-            font-size: 9px;
-            padding: 1px 5px;
+            font-size: 11px;
+            padding: 2px 6px;
             border-radius: 0;
             background: var(--bg-primary);
-            color: var(--text-muted);
+            color: #7d8a98;
+            border: 1px solid var(--border);
         }
         .nav-item.active .badge { background: rgba(0,212,170,0.15); color: var(--accent); }
         .nav-icon { width: 16px; text-align: center; font-size: 12px; opacity: 0.7; }
@@ -1022,6 +1023,51 @@
             transition: all 0.15s;
         }
         .landing-search-row button:hover { background: var(--accent); color: var(--bg-primary); }
+
+        /* Fetch controls */
+        .fetch-controls {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .fetch-controls .fc-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .fetch-controls label {
+            font-family: var(--mono);
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        .fetch-controls select,
+        .fetch-controls input[type="date"] {
+            padding: 4px 8px;
+            border: 1px solid var(--border);
+            border-radius: 0;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--mono);
+            font-size: 11px;
+            outline: none;
+        }
+        .fetch-controls select:focus,
+        .fetch-controls input[type="date"]:focus { border-color: var(--accent); }
+        .fetch-controls input[type="date"] { width: 130px; }
+        .fetch-controls select { min-width: 60px; }
+        .fetch-controls .fc-divider {
+            width: 1px;
+            height: 20px;
+            background: var(--border-bright);
+        }
     </style>
 </head>
 <body>
@@ -1132,6 +1178,7 @@
                 <div class="sub-tabs" id="sub-tabs"></div>
             </div>
             <div id="search-bar-container"></div>
+            <div id="data-fetch-controls"></div>
             <div class="view-controls">
                 <button class="view-btn active" onclick="setView('cards')" id="btn-cards">Cards</button>
                 <button class="view-btn" onclick="setView('table')" id="btn-table">Table</button>
@@ -1265,6 +1312,9 @@ let currentAgency = null;
 let currentSubSection = '';
 let currentData = [];
 let currentView = 'cards';
+let fetchLimit = 20;
+let fetchDateFrom = '';
+let fetchDateTo = '';
 let chatHistory = [];
 let openaiKey = '';
 let datagovKey = '';
@@ -1313,9 +1363,13 @@ async function corsFetch(url, options = {}) {
 // These functions call government APIs directly from the browser
 const DIRECT_API = {
     sec: {
-        fetch: async (sub, query) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
+            let dateFilter = '';
+            if (opts.dateFrom) dateFilter += `&dateRange=custom&startdt=${opts.dateFrom}`;
+            if (opts.dateTo) dateFilter += `&enddt=${opts.dateTo}`;
             if (query) {
-                const r = await fetch(`https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(query)}%22&from=0&size=20`);
+                const r = await fetch(`https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(query)}%22&from=0&size=${lim}${dateFilter}`);
                 const d = await r.json();
                 return (d.hits?.hits || []).map(h => ({
                     title: h._source?.entity_name || '',
@@ -1326,7 +1380,7 @@ const DIRECT_API = {
                 }));
             }
             const ft = sub || '8-K';
-            const r = await fetch(`https://efts.sec.gov/LATEST/search-index?q=%22${ft}%22&forms=${ft}&from=0&size=20`);
+            const r = await fetch(`https://efts.sec.gov/LATEST/search-index?q=%22${ft}%22&forms=${ft}&from=0&size=${lim}${dateFilter}`);
             const d = await r.json();
             return (d.hits?.hits || []).map(h => ({
                 title: (h._source?.display_names || [''])[0] || h._source?.entity_name || '',
@@ -1338,7 +1392,8 @@ const DIRECT_API = {
         }
     },
     fda: {
-        fetch: async (sub, query) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             const endpoints = {
                 drug_events: 'drug/event.json',
                 drug_recalls: 'drug/enforcement.json',
@@ -1347,7 +1402,13 @@ const DIRECT_API = {
                 food_recalls: 'food/enforcement.json'
             };
             const ep = endpoints[sub] || 'drug/event.json';
-            let url = `https://api.fda.gov/${ep}?limit=20`;
+            let url = `https://api.fda.gov/${ep}?limit=${lim}`;
+            if (opts.dateFrom || opts.dateTo) {
+                const df = (opts.dateFrom||'2000-01-01').replace(/-/g,'');
+                const dt = (opts.dateTo||'2099-12-31').replace(/-/g,'');
+                const dateField = (sub === 'drug_events') ? 'receivedate' : 'report_date';
+                url += `&search=${dateField}:[${df}+TO+${dt}]`;
+            }
             if (query) {
                 if (sub === 'drug_events') url += `&search=patient.drug.medicinalproduct:"${query}"`;
                 else if (sub === 'device_510k') url += `&search=device_name:"${query}"`;
@@ -1385,7 +1446,8 @@ const DIRECT_API = {
         }
     },
     treasury: {
-        fetch: async (sub) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             const endpoints = {
                 national_debt: 'v2/accounting/od/debt_to_penny',
                 daily_statements: 'v1/accounting/dts/dts_table_1',
@@ -1393,7 +1455,10 @@ const DIRECT_API = {
                 exchange_rates: 'v1/accounting/od/rates_of_exchange'
             };
             const ep = endpoints[sub] || endpoints.national_debt;
-            const r = await corsFetch(`https://api.fiscaldata.treasury.gov/services/api/fiscal_service/${ep}?page[size]=20&sort=-record_date`);
+            let dateFilter = '';
+            if (opts.dateFrom) dateFilter += `&filter=record_date:gte:${opts.dateFrom}`;
+            if (opts.dateTo) dateFilter += `&filter=record_date:lte:${opts.dateTo}`;
+            const r = await corsFetch(`https://api.fiscaldata.treasury.gov/services/api/fiscal_service/${ep}?page[size]=${lim}&sort=-record_date${dateFilter}`);
             const d = await r.json();
             const data = d.data || [];
             if (sub === 'national_debt') return data.map(x => ({
@@ -1418,20 +1483,21 @@ const DIRECT_API = {
         }
     },
     noaa: {
-        fetch: async (sub) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             if (sub === 'forecast') {
                 const r = await fetch('https://api.weather.gov/points/38.8894,-77.0352', {headers:{'User-Agent':'OpenGovDash','Accept':'application/geo+json'}});
                 const d = await r.json();
                 const fr = await fetch(d.properties.forecast, {headers:{'User-Agent':'OpenGovDash','Accept':'application/geo+json'}});
                 const fd = await fr.json();
-                return (fd.properties?.periods || []).map(p => ({
+                return (fd.properties?.periods || []).slice(0, lim).map(p => ({
                     title: p.name || '', description: p.detailedForecast || '', date: p.startTime || '',
                     link: 'https://weather.gov', temperature: `${p.temperature}°${p.temperatureUnit}`
                 }));
             }
             const r = await fetch('https://api.weather.gov/alerts/active', {headers:{'User-Agent':'OpenGovDash','Accept':'application/geo+json'}});
             const d = await r.json();
-            return (d.features || []).slice(0,20).map(f => ({
+            return (d.features || []).slice(0,lim).map(f => ({
                 title: f.properties?.headline || '', description: (f.properties?.description || '').substring(0,300),
                 date: f.properties?.onset || '', link: f.properties?.uri || 'https://alerts.weather.gov',
                 severity: f.properties?.severity || '', area: f.properties?.areaDesc || ''
@@ -1439,9 +1505,13 @@ const DIRECT_API = {
         }
     },
     usgs: {
-        fetch: async (sub) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             if (sub === 'water') return [{title:'Water monitoring requires backend proxy', description:'USGS Water Services API may have CORS restrictions', date:'', link:'https://waterservices.usgs.gov/'}];
-            const r = await fetch('https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=20&minmagnitude=2.5&orderby=time');
+            let dateFilter = '';
+            if (opts.dateFrom) dateFilter += `&starttime=${opts.dateFrom}`;
+            if (opts.dateTo) dateFilter += `&endtime=${opts.dateTo}`;
+            const r = await fetch(`https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=${lim}&minmagnitude=2.5&orderby=time${dateFilter}`);
             const d = await r.json();
             return (d.features || []).map(f => ({
                 title: f.properties?.title || '', description: `Magnitude: ${f.properties?.mag} | Depth: ${f.geometry?.coordinates?.[2]}km`,
@@ -1451,12 +1521,13 @@ const DIRECT_API = {
         }
     },
     nasa: {
-        fetch: async (sub) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             const key = datagovKey || 'DEMO_KEY';
             if (sub === 'neo') {
                 const r = await fetch(`https://api.nasa.gov/neo/rest/v1/neo/browse?api_key=${key}`);
                 const d = await r.json();
-                return (d.near_earth_objects || []).slice(0,20).map(n => ({
+                return (d.near_earth_objects || []).slice(0,lim).map(n => ({
                     title: n.name || '', description: `Magnitude: ${n.absolute_magnitude_h} | Hazardous: ${n.is_potentially_hazardous_asteroid}`,
                     date: n.orbital_data?.first_observation_date || '', link: n.nasa_jpl_url || ''
                 }));
@@ -1464,17 +1535,19 @@ const DIRECT_API = {
             if (sub === 'mars') {
                 const r = await fetch(`https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/latest_photos?api_key=${key}`);
                 const d = await r.json();
-                return (d.latest_photos || []).slice(0,20).map(p => ({
+                return (d.latest_photos || []).slice(0,lim).map(p => ({
                     title: `Sol ${p.sol} - ${p.camera?.full_name || ''}`, description: `Rover: ${p.rover?.name || ''} | Camera: ${p.camera?.name || ''}`,
                     date: p.earth_date || '', link: p.img_src || ''
                 }));
             }
-            // Get today + last 9 days of APOD, sorted newest first
+            // Get APOD range — use date controls if set, else last 9 days
             const today = new Date();
             const startDate = new Date(today);
-            startDate.setDate(today.getDate() - 9);
+            startDate.setDate(today.getDate() - Math.min(lim - 1, 30));
             const fmt = d => d.toISOString().split('T')[0];
-            const r = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${key}&start_date=${fmt(startDate)}&end_date=${fmt(today)}`);
+            const apodStart = opts.dateFrom || fmt(startDate);
+            const apodEnd = opts.dateTo || fmt(today);
+            const r = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${key}&start_date=${apodStart}&end_date=${apodEnd}`);
             const d = await r.json();
             return (Array.isArray(d) ? d : [d]).reverse().map(x => ({
                 title: x.title || '', description: (x.explanation || '').substring(0,300),
@@ -1484,18 +1557,21 @@ const DIRECT_API = {
         }
     },
     bls: {
-        fetch: async (sub) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             const seriesMap = { unemployment:'LNS14000000', cpi:'CUUR0000SA0', employment:'CES0000000001', avg_hourly_earnings:'CES0500000003' };
             const names = { unemployment:'Unemployment Rate', cpi:'Consumer Price Index', employment:'Total Nonfarm Employment', avg_hourly_earnings:'Avg Hourly Earnings' };
             const sid = seriesMap[sub] || seriesMap.unemployment;
             const name = names[sub] || names.unemployment;
             const year = new Date().getFullYear();
+            const startYear = opts.dateFrom ? parseInt(opts.dateFrom.split('-')[0]) : year - 3;
+            const endYear = opts.dateTo ? parseInt(opts.dateTo.split('-')[0]) : year;
             const r = await fetch('https://api.bls.gov/publicAPI/v2/timeseries/data/', {
                 method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({seriesid:[sid], startyear:String(year-3), endyear:String(year)})
+                body: JSON.stringify({seriesid:[sid], startyear:String(startYear), endyear:String(endYear)})
             });
             const d = await r.json();
-            const series = d.Results?.series?.[0]?.data || [];
+            const series = (d.Results?.series?.[0]?.data || []).slice(0, lim);
             return series.map(x => ({
                 title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
                 date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
@@ -1503,27 +1579,29 @@ const DIRECT_API = {
         }
     },
     census: {
-        fetch: async (sub) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             if (sub === 'income') {
                 const r = await fetch('https://api.census.gov/data/2022/acs/acs1?get=NAME,B19013_001E&for=state:*');
                 const d = await r.json();
-                return d.slice(1).sort((a,b)=>parseInt(b[1]||0)-parseInt(a[1]||0)).slice(0,20).map(x => ({
+                return d.slice(1).sort((a,b)=>parseInt(b[1]||0)-parseInt(a[1]||0)).slice(0,lim).map(x => ({
                     title: x[0], description: x[1] && x[1]!=='-666666666' ? `Median Household Income: $${parseInt(x[1]).toLocaleString()}` : 'Data not available',
                     date: '2022 ACS', link: 'https://data.census.gov/'
                 }));
             }
             const r = await fetch('https://api.census.gov/data/2022/acs/acs1?get=NAME,B01001_001E&for=state:*');
             const d = await r.json();
-            return d.slice(1).sort((a,b)=>parseInt(b[1]||0)-parseInt(a[1]||0)).slice(0,20).map(x => ({
+            return d.slice(1).sort((a,b)=>parseInt(b[1]||0)-parseInt(a[1]||0)).slice(0,lim).map(x => ({
                 title: x[0], description: `Population (ACS 2022): ${parseInt(x[1]).toLocaleString()}`,
                 date: '2022', link: 'https://data.census.gov/', population: x[1]
             }));
         }
     },
     fdic: {
-        fetch: async (sub) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             if (sub === 'failures') {
-                const r = await fetch('https://banks.data.fdic.gov/api/failures?limit=20&sort_by=FAILDATE&sort_order=DESC');
+                const r = await fetch(`https://banks.data.fdic.gov/api/failures?limit=${lim}&sort_by=FAILDATE&sort_order=DESC`);
                 const d = await r.json();
                 return (d.data || []).map(x => ({
                     title: x.data?.NAME || x.data?.INSTNAME || 'Unknown Bank',
@@ -1531,7 +1609,7 @@ const DIRECT_API = {
                     date: x.data?.FAILDATE || '', link: 'https://www.fdic.gov/resources/resolutions/bank-failures/'
                 }));
             }
-            const r = await fetch('https://banks.data.fdic.gov/api/institutions?limit=20&sort_by=ASSET&sort_order=DESC&filters=ACTIVE%3A1');
+            const r = await fetch(`https://banks.data.fdic.gov/api/institutions?limit=${lim}&sort_by=ASSET&sort_order=DESC&filters=ACTIVE%3A1`);
             const d = await r.json();
             return (d.data || []).map(x => ({
                 title: x.data?.INSTNAME || x.data?.REPNM || 'Unknown Institution',
@@ -1541,10 +1619,14 @@ const DIRECT_API = {
         }
     },
     nih: {
-        fetch: async (sub, query) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             if (sub === 'pubmed') {
                 const q = query || 'health';
-                const r = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${q}&retmax=10&retmode=json&sort=date`);
+                let dateFilter = '';
+                if (opts.dateFrom) dateFilter += `&mindate=${opts.dateFrom.replace(/-/g,'/')}&datetype=edat`;
+                if (opts.dateTo) dateFilter += `&maxdate=${opts.dateTo.replace(/-/g,'/')}`;
+                const r = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${q}&retmax=${lim}&retmode=json&sort=date${dateFilter}`);
                 const d = await r.json();
                 const ids = d.esearchresult?.idlist || [];
                 if (ids.length) {
@@ -1558,7 +1640,7 @@ const DIRECT_API = {
                 }
                 return [];
             }
-            let url = `https://clinicaltrials.gov/api/v2/studies?pageSize=20&sort=LastUpdatePostDate:desc`;
+            let url = `https://clinicaltrials.gov/api/v2/studies?pageSize=${lim}&sort=LastUpdatePostDate:desc`;
             if (query) url += `&query.term=${encodeURIComponent(query)}`;
             const r = await fetch(url);
             const d = await r.json();
@@ -1572,17 +1654,21 @@ const DIRECT_API = {
         }
     },
     fec: {
-        fetch: async (sub) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             const key = datagovKey || 'DEMO_KEY';
             if (sub === 'filings') {
-                const r = await fetch(`https://api.open.fec.gov/v1/filings/?api_key=${key}&per_page=20&sort=-receipt_date`);
+                let dateFilter = '';
+                if (opts.dateFrom) dateFilter += `&min_receipt_date=${opts.dateFrom}`;
+                if (opts.dateTo) dateFilter += `&max_receipt_date=${opts.dateTo}`;
+                const r = await fetch(`https://api.open.fec.gov/v1/filings/?api_key=${key}&per_page=${lim}&sort=-receipt_date${dateFilter}`);
                 const d = await r.json();
                 return (d.results || []).map(x => ({
                     title: x.committee_name || '', description: `Form: ${x.form_type||''} | Receipts: $${(x.total_receipts||0).toLocaleString()}`,
                     date: x.receipt_date || '', link: `https://www.fec.gov/data/committee/${x.committee_id||''}/`
                 }));
             }
-            const r = await fetch(`https://api.open.fec.gov/v1/candidates/?api_key=${key}&sort=-receipts&per_page=20&election_year=2024`);
+            const r = await fetch(`https://api.open.fec.gov/v1/candidates/?api_key=${key}&sort=-receipts&per_page=${lim}&election_year=2024`);
             const d = await r.json();
             return (d.results || []).map(x => ({
                 title: x.name || '', description: `Party: ${x.party_full||''} | Office: ${x.office_full||''} | State: ${x.state||''}`,
@@ -1591,9 +1677,10 @@ const DIRECT_API = {
         }
     },
     loc: {
-        fetch: async (sub, query) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             const q = query || 'government';
-            const r = await fetch(`https://www.loc.gov/search/?q=${encodeURIComponent(q)}&fo=json&c=20`);
+            const r = await fetch(`https://www.loc.gov/search/?q=${encodeURIComponent(q)}&fo=json&c=${lim}`);
             const d = await r.json();
             return (d.results || []).map(x => ({
                 title: x.title || (Array.isArray(x.description) ? x.description[0] : ''),
@@ -1603,14 +1690,16 @@ const DIRECT_API = {
         }
     },
     usaspending: {
-        fetch: async (sub, query) => {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
             if (query) {
+                const timePeriod = {start_date: opts.dateFrom || "2024-01-01", end_date: opts.dateTo || "2026-12-31"};
                 const r = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
                     method:'POST', headers:{'Content-Type':'application/json'},
                     body: JSON.stringify({
-                        filters:{keywords:[query],time_period:[{start_date:"2024-01-01",end_date:"2026-12-31"}]},
+                        filters:{keywords:[query],time_period:[timePeriod]},
                         fields:["Award ID","Recipient Name","Award Amount","Description","Start Date","Awarding Agency"],
-                        limit:20, page:1, sort:"Award Amount", order:"desc"
+                        limit:lim, page:1, sort:"Award Amount", order:"desc"
                     })
                 });
                 const d = await r.json();
@@ -1621,15 +1710,18 @@ const DIRECT_API = {
             }
             const r = await fetch('https://api.usaspending.gov/api/v2/references/toptier_agencies/');
             const d = await r.json();
-            return (d.results||[]).slice(0,20).map(x => ({
+            return (d.results||[]).slice(0,lim).map(x => ({
                 title: x.agency_name||'', description: `Budget: $${(x.budget_authority_amount||0).toLocaleString()} | Obligated: $${(x.obligated_amount||0).toLocaleString()}`,
                 date: '', link: `https://www.usaspending.gov/agency/${x.agency_slug||''}`, abbreviation: x.abbreviation||''
             }));
         }
     },
     nist: {
-        fetch: async (sub, query) => {
-            let url = 'https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=20';
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
+            let url = `https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=${lim}`;
+            if (opts.dateFrom) url += `&pubStartDate=${opts.dateFrom}T00:00:00.000`;
+            if (opts.dateTo) url += `&pubEndDate=${opts.dateTo}T23:59:59.999`;
             if (query) url += `&keywordSearch=${encodeURIComponent(query)}`;
             const r = await fetch(url);
             const d = await r.json();
@@ -1644,37 +1736,41 @@ const DIRECT_API = {
         }
     },
     fcc: {
-        fetch: async (sub, query) => {
+        fetch: async (sub, query, opts = {}) => {
             // FCC ID Search — the main lookup
             if (sub === 'equipment_auth' || (!sub && query)) {
-                return await fccEquipmentSearch(query);
+                return await fccEquipmentSearch(query, opts);
             }
             // ECFS filings
             if (sub === 'ecfs_filings') {
-                return await fccEcfsFilings(query);
+                return await fccEcfsFilings(query, opts);
             }
             // Consumer complaints via Socrata
             if (sub === 'complaints') {
-                return await fccComplaints(query);
+                return await fccComplaints(query, opts);
             }
             // Broadband providers
             if (sub === 'broadband') {
-                return await fccBroadband();
+                return await fccBroadband(opts);
             }
             // Default: equipment auth
-            return await fccEquipmentSearch(query);
+            return await fccEquipmentSearch(query, opts);
         }
     }
 };
 
 // ========== FCC API IMPLEMENTATIONS ==========
 
-async function fccEquipmentSearch(query) {
+async function fccEquipmentSearch(query, opts = {}) {
+    const lim = opts.limit || 25;
     // FCC Equipment Authorization System
     // No query: show recent equipment grants as cards
     if (!query) {
         try {
-            const r = await corsFetch('https://opendata.fcc.gov/resource/i5ic-sdri.json?$limit=25&$order=grant_date DESC');
+            let dateFilter = '';
+            if (opts.dateFrom) dateFilter += ` AND grant_date >= '${opts.dateFrom}'`;
+            if (opts.dateTo) dateFilter += ` AND grant_date <= '${opts.dateTo}'`;
+            const r = await corsFetch(`https://opendata.fcc.gov/resource/i5ic-sdri.json?$limit=${lim}&$order=grant_date DESC${dateFilter ? '&$where=1=1' + encodeURIComponent(dateFilter) : ''}`);
             const d = await r.json();
             if (Array.isArray(d) && d.length > 0) {
                 return d.map(x => ({
@@ -1690,7 +1786,7 @@ async function fccEquipmentSearch(query) {
             }
         } catch(e) { /* fall through */ }
         try {
-            const r = await corsFetch('https://opendata.fcc.gov/resource/3b3k-34jp.json?$limit=25&$order=:id DESC');
+            const r = await corsFetch(`https://opendata.fcc.gov/resource/3b3k-34jp.json?$limit=${lim}&$order=:id DESC`);
             const d = await r.json();
             if (Array.isArray(d) && d.length > 0) {
                 return d.map(x => ({
@@ -1731,7 +1827,7 @@ async function fccEquipmentSearch(query) {
     // 1) Equipment authorization records (only if we have a grantee code)
     if (granteeCode) {
         try {
-            let url = `https://opendata.fcc.gov/resource/i5ic-sdri.json?$limit=50&$where=grantee_code='${granteeCode}'`;
+            let url = `https://opendata.fcc.gov/resource/i5ic-sdri.json?$limit=${lim}&$where=grantee_code='${granteeCode}'`;
             if (productCode) url += ` AND product_code='${productCode}'`;
             const r = await corsFetch(url);
             const d = await r.json();
@@ -1915,9 +2011,10 @@ async function fccNameSearch(q) {
     return results;
 }
 
-async function fccEcfsFilings(query) {
+async function fccEcfsFilings(query, opts = {}) {
+    const lim = opts.limit || 25;
     // FCC Electronic Comment Filing System
-    let url = 'https://publicapi.fcc.gov/ecfs/filings?limit=25&sort=date_received,DESC';
+    let url = `https://publicapi.fcc.gov/ecfs/filings?limit=${lim}&sort=date_received,DESC`;
     if (query) url += `&q=${encodeURIComponent(query)}`;
     try {
         const r = await corsFetch(url);
@@ -1937,12 +2034,12 @@ async function fccEcfsFilings(query) {
 
     // Fallback: try alternate format
     try {
-        const r = await corsFetch('https://publicapi.fcc.gov/ecfs/filings?limit=25&sort=date_received,DESC');
+        const r = await corsFetch(`https://publicapi.fcc.gov/ecfs/filings?limit=${lim}&sort=date_received,DESC`);
         const text = await r.text();
         const d = JSON.parse(text);
         if (d && typeof d === 'object') {
             const items = d.filings || d.results || (Array.isArray(d) ? d : []);
-            return items.slice(0, 25).map(f => ({
+            return items.slice(0, lim).map(f => ({
                 title: f.name_of_filer || JSON.stringify(f).substring(0, 80),
                 description: 'ECFS Filing',
                 date: f.date_received || '',
@@ -1954,9 +2051,13 @@ async function fccEcfsFilings(query) {
     return [{ title: 'ECFS Filings', description: 'Unable to load filings. The FCC ECFS API may be temporarily unavailable. Visit the link to browse filings directly.', date: '', link: 'https://www.fcc.gov/ecfs/' }];
 }
 
-async function fccComplaints(query) {
+async function fccComplaints(query, opts = {}) {
+    const lim = opts.limit || 25;
     // FCC Consumer Complaints via Socrata
-    let url = 'https://opendata.fcc.gov/resource/3xyp-aqkj.json?$limit=25&$order=ticket_created DESC';
+    let dateFilter = '';
+    if (opts.dateFrom) dateFilter += ` AND ticket_created >= '${opts.dateFrom}'`;
+    if (opts.dateTo) dateFilter += ` AND ticket_created <= '${opts.dateTo}'`;
+    let url = `https://opendata.fcc.gov/resource/3xyp-aqkj.json?$limit=${lim}&$order=ticket_created DESC${dateFilter ? '&$where=1=1' + encodeURIComponent(dateFilter) : ''}`;
     if (query) url += `&$where=upper(issue) like '%25${encodeURIComponent(query.toUpperCase())}%25' OR upper(method) like '%25${encodeURIComponent(query.toUpperCase())}%25'`;
     try {
         const r = await corsFetch(url);
@@ -1992,14 +2093,15 @@ async function fccComplaints(query) {
     return [{ title: 'Consumer Complaints', description: 'Unable to load FCC complaint data. Try visiting the link directly.', date: '', link: 'https://opendata.fcc.gov/Consumer/CGB-Consumer-Complaints-Data/3xyp-aqkj' }];
 }
 
-async function fccBroadband() {
+async function fccBroadband(opts = {}) {
+    const lim = opts.limit || 30;
     // Mobile broadband carrier data
     try {
         const r = await corsFetch('https://broadbandmap.fcc.gov/api/public/map/listMobileProviders');
         const d = await r.json();
         const providers = d.data || d.providers || d || [];
         if (Array.isArray(providers) && providers.length > 0) {
-            return providers.slice(0, 30).map(p => ({
+            return providers.slice(0, lim).map(p => ({
                 title: p.provider_name || p.holding_company_name || p.dba_name || p.name || 'Provider',
                 description: `Provider ID: ${p.provider_id || p.frn || 'N/A'} | Technology: ${p.technology_desc || p.technology || 'Various'}`,
                 date: '',
@@ -2365,8 +2467,9 @@ async function selectAgency(agencyId) {
 
     // Clear sub-tabs (landing shows endpoint cards instead)
     document.getElementById('sub-tabs').innerHTML = '';
-    // Hide search bar and view controls on landing
+    // Hide search bar, fetch controls, and view controls on landing
     document.getElementById('search-bar-container').innerHTML = '';
+    document.getElementById('data-fetch-controls').innerHTML = '';
     const vc = document.querySelector('.view-controls');
     if (vc) vc.style.display = 'none';
 
@@ -2374,6 +2477,42 @@ async function selectAgency(agencyId) {
     currentData = [];
 
     renderAgencyLanding();
+}
+
+function buildFetchControlsHtml() {
+    const today = new Date().toISOString().split('T')[0];
+    return `<div class="fetch-controls" id="fetch-controls">
+        <div class="fc-group">
+            <label>Limit</label>
+            <select id="fc-limit" onchange="updateFetchLimit(this.value)">
+                <option value="10"${fetchLimit===10?' selected':''}>10</option>
+                <option value="20"${fetchLimit===20?' selected':''}>20</option>
+                <option value="50"${fetchLimit===50?' selected':''}>50</option>
+                <option value="100"${fetchLimit===100?' selected':''}>100</option>
+            </select>
+        </div>
+        <div class="fc-divider"></div>
+        <div class="fc-group">
+            <label>From</label>
+            <input type="date" id="fc-date-from" value="${fetchDateFrom}" onchange="updateFetchDateFrom(this.value)" max="${today}">
+        </div>
+        <div class="fc-group">
+            <label>To</label>
+            <input type="date" id="fc-date-to" value="${fetchDateTo}" onchange="updateFetchDateTo(this.value)" max="${today}">
+        </div>
+        <div class="fc-divider"></div>
+        <button style="font-family:var(--mono);font-size:9px;padding:4px 10px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;" onclick="resetFetchControls()">Reset</button>
+    </div>`;
+}
+
+function updateFetchLimit(val) { fetchLimit = parseInt(val) || 20; }
+function updateFetchDateFrom(val) { fetchDateFrom = val; }
+function updateFetchDateTo(val) { fetchDateTo = val; }
+function resetFetchControls() {
+    fetchLimit = 20; fetchDateFrom = ''; fetchDateTo = '';
+    const el = document.getElementById('fc-limit'); if (el) el.value = '20';
+    const df = document.getElementById('fc-date-from'); if (df) df.value = '';
+    const dt = document.getElementById('fc-date-to'); if (dt) dt.value = '';
 }
 
 function renderAgencyLanding() {
@@ -2505,6 +2644,9 @@ function renderAgencyLanding() {
         </div>`;
     }
 
+    // Fetch controls
+    html += buildFetchControlsHtml();
+
     // Endpoint cards
     html += '<div class="endpoint-grid">';
     for (const sub of subs) {
@@ -2545,6 +2687,9 @@ function launchEndpoint(subId) {
         </div>`;
     }
 
+    // Show fetch controls in data view
+    document.getElementById('data-fetch-controls').innerHTML = buildFetchControlsHtml();
+
     // Show view controls
     const vc = document.querySelector('.view-controls');
     if (vc) vc.style.display = 'flex';
@@ -2566,6 +2711,9 @@ function launchSearch() {
     subTabs.innerHTML += subs.map(s =>
         `<button class="sub-tab ${s.id === currentSubSection ? 'active' : ''}" onclick="selectSubSection('${s.id}')">${s.name}</button>`
     ).join('');
+
+    // Show fetch controls in data view
+    document.getElementById('data-fetch-controls').innerHTML = buildFetchControlsHtml();
 
     // Show view controls
     const vc = document.querySelector('.view-controls');
@@ -2593,10 +2741,12 @@ async function fetchAgencyData(searchQuery) {
         viewControls.style.display = hideViewControls ? 'none' : 'flex';
     }
 
+    const opts = { limit: fetchLimit, dateFrom: fetchDateFrom, dateTo: fetchDateTo };
+
     if (useDirectApi && DIRECT_API[currentAgency.id]) {
         // Client-side direct API calls
         try {
-            currentData = await DIRECT_API[currentAgency.id].fetch(currentSubSection, searchQuery);
+            currentData = await DIRECT_API[currentAgency.id].fetch(currentSubSection, searchQuery, opts);
             document.getElementById('result-count').textContent = `${currentData.length} results`;
             renderData();
         } catch (e) {
@@ -2610,6 +2760,9 @@ async function fetchAgencyData(searchQuery) {
     if (currentSubSection) params.set('sub_section', currentSubSection);
     if (datagovKey) params.set('api_key', datagovKey);
     if (searchQuery) params.set('query', searchQuery);
+    if (opts.limit) params.set('limit', opts.limit);
+    if (opts.dateFrom) params.set('date_from', opts.dateFrom);
+    if (opts.dateTo) params.set('date_to', opts.dateTo);
 
     try {
         const resp = await fetch(`${API_BASE}/api/data/${currentAgency.id}?${params}`);
