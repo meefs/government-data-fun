@@ -5,29 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenGovDash - Government Data Dashboard</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
         :root {
-            --bg-primary: #0f1117;
-            --bg-secondary: #1a1d27;
-            --bg-card: #222536;
-            --bg-hover: #2a2e42;
-            --accent: #4f8cff;
-            --accent-dim: #3a6fd4;
-            --text-primary: #e8eaed;
-            --text-secondary: #9aa0a6;
-            --text-muted: #6b7280;
-            --border: #2d3148;
-            --success: #34d399;
-            --warning: #fbbf24;
-            --danger: #f87171;
-            --sidebar-width: 260px;
+            --bg-primary: #0a0c10;
+            --bg-secondary: #11141b;
+            --bg-card: #161a24;
+            --bg-hover: #1c2030;
+            --accent: #00d4aa;
+            --accent-dim: #00b894;
+            --accent-glow: rgba(0,212,170,0.12);
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --text-muted: #484f58;
+            --border: #1c2030;
+            --border-bright: #2a3040;
+            --success: #2dd4a0;
+            --warning: #e3b341;
+            --danger: #f85149;
+            --sidebar-width: 240px;
+            --mono: 'JetBrains Mono', 'Consolas', monospace;
+            --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: var(--sans);
             background: var(--bg-primary);
             color: var(--text-primary);
             height: 100vh;
             overflow: hidden;
+            -webkit-font-smoothing: antialiased;
         }
         /* Layout */
         .app { display: flex; height: 100vh; }
@@ -45,15 +51,19 @@
             border-bottom: 1px solid var(--border);
         }
         .sidebar-header h1 {
-            font-size: 18px;
+            font-family: var(--mono);
+            font-size: 14px;
             font-weight: 700;
             color: var(--accent);
-            letter-spacing: -0.5px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
         }
         .sidebar-header p {
-            font-size: 11px;
+            font-family: var(--mono);
+            font-size: 10px;
             color: var(--text-muted);
             margin-top: 4px;
+            letter-spacing: 0.5px;
         }
         .sidebar-nav {
             flex: 1;
@@ -63,37 +73,43 @@
         .sidebar-nav::-webkit-scrollbar { width: 4px; }
         .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
         .nav-section-title {
-            font-size: 10px;
+            font-family: var(--mono);
+            font-size: 9px;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             color: var(--text-muted);
-            padding: 12px 8px 4px;
+            padding: 14px 10px 4px;
+            border-top: 1px solid var(--border);
         }
+        .nav-section-title:first-child { border-top: none; }
         .nav-item {
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 10px;
-            border-radius: 6px;
+            padding: 6px 10px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 13px;
+            font-family: var(--mono);
+            font-size: 11px;
             color: var(--text-secondary);
-            transition: all 0.15s;
+            transition: all 0.1s;
             margin-bottom: 1px;
+            border-left: 2px solid transparent;
         }
-        .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .nav-item.active { background: var(--accent); color: #fff; }
+        .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); border-left-color: var(--text-muted); }
+        .nav-item.active { background: var(--accent-glow); color: var(--accent); border-left-color: var(--accent); }
         .nav-item .badge {
             margin-left: auto;
+            font-family: var(--mono);
             font-size: 9px;
-            padding: 2px 6px;
-            border-radius: 10px;
+            padding: 1px 5px;
+            border-radius: 3px;
             background: var(--bg-primary);
             color: var(--text-muted);
         }
-        .nav-item.active .badge { background: rgba(255,255,255,0.2); color: #fff; }
-        .nav-icon { width: 18px; text-align: center; font-size: 14px; }
+        .nav-item.active .badge { background: rgba(0,212,170,0.15); color: var(--accent); }
+        .nav-icon { width: 16px; text-align: center; font-size: 12px; opacity: 0.7; }
 
         /* Main content */
         .main {
@@ -106,70 +122,82 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 12px 20px;
+            padding: 10px 20px;
             border-bottom: 1px solid var(--border);
             background: var(--bg-secondary);
         }
         .topbar h2 {
-            font-size: 16px;
+            font-family: var(--mono);
+            font-size: 13px;
             font-weight: 600;
+            letter-spacing: 0.3px;
         }
         .topbar .source-badge {
-            font-size: 11px;
+            font-family: var(--mono);
+            font-size: 10px;
             padding: 3px 8px;
-            border-radius: 4px;
+            border-radius: 3px;
             background: var(--bg-card);
             color: var(--text-muted);
+            border: 1px solid var(--border);
         }
         .sub-tabs {
             display: flex;
-            gap: 4px;
+            gap: 3px;
             margin-left: auto;
             flex-wrap: wrap;
         }
         .sub-tab {
-            font-size: 12px;
-            padding: 5px 12px;
-            border-radius: 4px;
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 4px 10px;
+            border-radius: 3px;
             border: 1px solid var(--border);
             background: transparent;
             color: var(--text-secondary);
             cursor: pointer;
-            transition: all 0.15s;
+            transition: all 0.1s;
         }
         .sub-tab:hover { border-color: var(--accent); color: var(--accent); }
-        .sub-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .sub-tab.active { background: var(--accent); color: #0a0c10; border-color: var(--accent); font-weight: 600; }
 
         /* Search bar */
         .search-bar {
             display: flex;
             gap: 8px;
-            padding: 10px 20px;
+            padding: 8px 20px;
             background: var(--bg-primary);
             border-bottom: 1px solid var(--border);
         }
         .search-bar input {
             flex: 1;
-            padding: 8px 14px;
-            border-radius: 6px;
+            padding: 7px 12px;
+            border-radius: 3px;
             border: 1px solid var(--border);
             background: var(--bg-card);
             color: var(--text-primary);
-            font-size: 13px;
+            font-family: var(--mono);
+            font-size: 12px;
             outline: none;
+            transition: border-color 0.15s;
         }
-        .search-bar input:focus { border-color: var(--accent); }
+        .search-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow); }
+        .search-bar input::placeholder { color: var(--text-muted); }
         .search-bar button {
-            padding: 8px 16px;
-            border-radius: 6px;
-            border: none;
-            background: var(--accent);
-            color: #fff;
-            font-size: 13px;
+            padding: 7px 14px;
+            border-radius: 3px;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--accent);
+            font-family: var(--mono);
+            font-size: 11px;
             cursor: pointer;
-            font-weight: 500;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.15s;
         }
-        .search-bar button:hover { background: var(--accent-dim); }
+        .search-bar button:hover { background: var(--accent); color: var(--bg-primary); }
 
         /* Content area */
         .content {
@@ -177,8 +205,10 @@
             overflow-y: auto;
             padding: 20px;
         }
-        .content::-webkit-scrollbar { width: 6px; }
-        .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .content::-webkit-scrollbar { width: 5px; }
+        .content::-webkit-scrollbar-track { background: transparent; }
+        .content::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+        .content::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
 
         /* Loading */
         .loading {
@@ -187,46 +217,52 @@
             justify-content: center;
             height: 200px;
             color: var(--text-muted);
+            font-family: var(--mono);
+            font-size: 12px;
+            letter-spacing: 0.5px;
         }
         .spinner {
-            width: 24px; height: 24px;
-            border: 3px solid var(--border);
+            width: 18px; height: 18px;
+            border: 2px solid var(--border);
             border-top-color: var(--accent);
             border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+            animation: spin 0.7s linear infinite;
             margin-right: 10px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse-glow { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
 
         /* Data table */
         .data-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 13px;
+            font-family: var(--mono);
+            font-size: 11px;
         }
         .data-table th {
             text-align: left;
-            padding: 10px 12px;
+            padding: 8px 12px;
             background: var(--bg-secondary);
-            color: var(--text-muted);
+            color: var(--accent-dim);
             font-weight: 600;
-            font-size: 11px;
+            font-size: 9px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 1px solid var(--border);
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--accent-dim);
             position: sticky;
             top: 0;
             z-index: 1;
         }
         .data-table td {
-            padding: 10px 12px;
+            padding: 8px 12px;
             border-bottom: 1px solid var(--border);
             color: var(--text-secondary);
             max-width: 400px;
             overflow: hidden;
             text-overflow: ellipsis;
+            white-space: nowrap;
         }
-        .data-table tr:hover td { background: var(--bg-hover); }
+        .data-table tr:hover td { background: var(--bg-hover); color: var(--text-primary); }
         .data-table a {
             color: var(--accent);
             text-decoration: none;
@@ -237,21 +273,24 @@
         .cards-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-            gap: 12px;
+            gap: 10px;
         }
         .data-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 4px;
             padding: 14px;
-            transition: border-color 0.15s;
+            transition: all 0.15s;
+            border-left: 2px solid transparent;
         }
-        .data-card:hover { border-color: var(--accent); }
+        .data-card:hover { border-left-color: var(--accent); background: var(--bg-hover); }
         .data-card h3 {
-            font-size: 14px;
+            font-family: var(--mono);
+            font-size: 12px;
             font-weight: 600;
             margin-bottom: 6px;
             color: var(--text-primary);
+            line-height: 1.4;
         }
         .data-card p {
             font-size: 12px;
@@ -262,56 +301,108 @@
         .data-card .meta {
             display: flex;
             gap: 12px;
-            font-size: 11px;
+            font-family: var(--mono);
+            font-size: 10px;
             color: var(--text-muted);
         }
         .data-card .meta a { color: var(--accent); }
 
-        /* Stats cards */
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        .stat-card {
+        /* Stats consolidated box */
+        .stats-box {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
-            text-align: center;
+            border-radius: 4px;
+            padding: 14px 20px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            flex-wrap: wrap;
         }
-        .stat-card .stat-value {
-            font-size: 24px;
+        .stats-box .stat-item {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+        .stats-box .stat-value {
+            font-family: var(--mono);
+            font-size: 20px;
             font-weight: 700;
             color: var(--accent);
         }
-        .stat-card .stat-label {
-            font-size: 11px;
+        .stats-box .stat-label {
+            font-family: var(--mono);
+            font-size: 10px;
             color: var(--text-muted);
-            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .stats-box .stat-divider {
+            width: 1px;
+            height: 28px;
+            background: var(--border-bright);
+        }
+
+        /* Filter bar */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .filter-bar .filter-label {
+            font-family: var(--mono);
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-right: 4px;
+        }
+        .filter-btn {
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 4px 10px;
+            border-radius: 3px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+        .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .filter-btn.active { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); font-weight: 600; }
+        .filter-btn .filter-count {
+            font-size: 9px;
+            opacity: 0.6;
+            margin-left: 3px;
         }
 
         /* View toggle */
         .view-controls {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
+            gap: 6px;
+            padding: 8px 20px;
             border-bottom: 1px solid var(--border);
             background: var(--bg-primary);
         }
         .view-btn {
-            padding: 4px 10px;
-            border-radius: 4px;
+            font-family: var(--mono);
+            padding: 3px 10px;
+            border-radius: 3px;
             border: 1px solid var(--border);
             background: transparent;
             color: var(--text-muted);
             cursor: pointer;
-            font-size: 12px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.12s;
         }
-        .view-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-        .result-count { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+        .view-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .view-btn.active { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); font-weight: 600; }
+        .result-count { font-family: var(--mono); font-size: 10px; color: var(--text-muted); margin-left: auto; }
 
         /* Chatbot */
         .chat-container {
@@ -325,104 +416,117 @@
             padding: 20px;
         }
         .chat-message {
-            margin-bottom: 16px;
+            margin-bottom: 14px;
             display: flex;
             gap: 10px;
         }
         .chat-message.user { justify-content: flex-end; }
         .chat-avatar {
-            width: 30px; height: 30px;
-            border-radius: 50%;
+            width: 28px; height: 28px;
+            border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            font-size: 13px;
             flex-shrink: 0;
         }
-        .chat-message.assistant .chat-avatar { background: var(--accent); }
-        .chat-message.user .chat-avatar { background: #6366f1; }
+        .chat-message.assistant .chat-avatar { background: var(--accent); color: var(--bg-primary); }
+        .chat-message.user .chat-avatar { background: var(--border-bright); }
         .chat-bubble {
             max-width: 70%;
             padding: 10px 14px;
-            border-radius: 12px;
+            border-radius: 4px;
             font-size: 13px;
             line-height: 1.6;
         }
         .chat-message.user .chat-bubble {
-            background: #6366f1;
-            color: #fff;
-            border-bottom-right-radius: 4px;
+            background: var(--border-bright);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
         }
         .chat-message.assistant .chat-bubble {
             background: var(--bg-card);
             color: var(--text-primary);
-            border-bottom-left-radius: 4px;
+            border: 1px solid var(--border);
             white-space: pre-wrap;
         }
         .chat-input-area {
-            padding: 12px 20px;
+            padding: 10px 20px;
             border-top: 1px solid var(--border);
             display: flex;
             gap: 8px;
         }
         .chat-input-area input {
             flex: 1;
-            padding: 10px 14px;
-            border-radius: 8px;
+            padding: 9px 12px;
+            border-radius: 3px;
             border: 1px solid var(--border);
             background: var(--bg-card);
             color: var(--text-primary);
-            font-size: 14px;
+            font-family: var(--mono);
+            font-size: 12px;
             outline: none;
         }
         .chat-input-area input:focus { border-color: var(--accent); }
         .chat-input-area button {
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: none;
-            background: var(--accent);
-            color: #fff;
-            font-size: 14px;
+            padding: 9px 18px;
+            border-radius: 3px;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--accent);
+            font-family: var(--mono);
+            font-size: 11px;
             cursor: pointer;
-            font-weight: 500;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.15s;
         }
+        .chat-input-area button:hover { background: var(--accent); color: var(--bg-primary); }
 
         /* API Key modal */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.7);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 100;
+            backdrop-filter: blur(4px);
         }
         .modal {
             background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
+            border: 1px solid var(--accent-dim);
+            border-radius: 4px;
             padding: 24px;
             width: 420px;
             max-width: 90%;
+            box-shadow: 0 0 40px rgba(0,212,170,0.08);
         }
-        .modal h3 { margin-bottom: 16px; font-size: 16px; }
+        .modal h3 { margin-bottom: 16px; font-family: var(--mono); font-size: 14px; color: var(--accent); }
         .modal label {
-            font-size: 12px;
+            font-family: var(--mono);
+            font-size: 10px;
             color: var(--text-muted);
             display: block;
             margin-bottom: 4px;
             margin-top: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        .modal input {
+        .modal input, .modal select {
             width: 100%;
             padding: 8px 12px;
-            border-radius: 6px;
+            border-radius: 3px;
             border: 1px solid var(--border);
             background: var(--bg-card);
             color: var(--text-primary);
-            font-size: 13px;
+            font-family: var(--mono);
+            font-size: 12px;
             outline: none;
         }
+        .modal input:focus, .modal select:focus { border-color: var(--accent); }
         .modal .btn-row {
             display: flex;
             gap: 8px;
@@ -430,50 +534,176 @@
             justify-content: flex-end;
         }
         .modal button {
-            padding: 8px 16px;
-            border-radius: 6px;
-            border: none;
+            padding: 7px 14px;
+            border-radius: 3px;
+            border: 1px solid var(--border);
             cursor: pointer;
-            font-size: 13px;
+            font-family: var(--mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        .modal .btn-primary { background: var(--accent); color: #fff; }
-        .modal .btn-secondary { background: var(--bg-card); color: var(--text-secondary); }
+        .modal .btn-primary { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); font-weight: 600; }
+        .modal .btn-primary:hover { background: var(--accent-dim); }
+        .modal .btn-secondary { background: transparent; color: var(--text-secondary); }
+        .modal .btn-secondary:hover { border-color: var(--text-muted); }
+
+        /* Welcome page */
+        .welcome-container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .welcome-container h2 {
+            font-family: var(--mono);
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        .welcome-container .subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 30px;
+        }
+        .setup-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .setup-section h3 {
+            font-family: var(--mono);
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .setup-section p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        .setup-section .step {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        .setup-section .step-num {
+            background: var(--accent);
+            color: #fff;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .setup-section .step-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .setup-section .step-text code {
+            background: var(--bg-primary);
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            color: var(--accent);
+        }
+        .provider-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .provider-card {
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+        .provider-card:hover { border-color: var(--accent); }
+        .provider-card.selected { border-color: var(--accent); background: var(--accent-glow); }
+        .provider-card h4 { font-family: var(--mono); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+        .provider-card .price { font-family: var(--mono); font-size: 10px; color: var(--success); }
+        .provider-card .desc { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .btn-primary {
+            padding: 9px 20px;
+            border-radius: 3px;
+            border: 1px solid var(--accent);
+            background: var(--accent);
+            color: var(--bg-primary);
+            font-family: var(--mono);
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.15s;
+        }
+        .btn-primary:hover { background: var(--accent-dim); }
+        .free-badge {
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(52,211,153,0.15);
+            color: var(--success);
+            font-weight: 600;
+        }
 
         /* Error */
         .error-msg {
-            background: rgba(248,113,113,0.1);
-            border: 1px solid rgba(248,113,113,0.3);
-            border-radius: 8px;
+            background: rgba(248,81,73,0.08);
+            border: 1px solid rgba(248,81,73,0.25);
+            border-radius: 4px;
             padding: 14px;
             color: var(--danger);
-            font-size: 13px;
+            font-family: var(--mono);
+            font-size: 12px;
         }
 
         /* Overview page */
         .overview-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 10px;
         }
         .agency-overview-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
+            border-radius: 4px;
+            padding: 14px;
             cursor: pointer;
-            transition: all 0.15s;
+            transition: all 0.12s;
+            border-left: 2px solid transparent;
         }
-        .agency-overview-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+        .agency-overview-card:hover { border-left-color: var(--accent); background: var(--bg-hover); }
         .agency-overview-card h3 {
-            font-size: 14px;
+            font-family: var(--mono);
+            font-size: 12px;
             font-weight: 600;
             color: var(--accent);
-            margin-bottom: 4px;
+            margin-bottom: 2px;
         }
         .agency-overview-card .acronym {
-            font-size: 11px;
+            font-family: var(--mono);
+            font-size: 10px;
             color: var(--text-muted);
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
         .agency-overview-card p {
             font-size: 12px;
@@ -487,11 +717,29 @@
             flex-wrap: wrap;
         }
         .tag {
-            font-size: 10px;
+            font-family: var(--mono);
+            font-size: 9px;
             padding: 2px 6px;
-            border-radius: 4px;
+            border-radius: 2px;
             background: var(--bg-primary);
             color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+        /* Agency preview items */
+        .agency-preview-item {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-secondary);
+            padding: 3px 0;
+            border-top: 1px solid var(--border);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .agency-preview-item:first-child { border-top: none; }
+        .agency-preview-item .preview-date {
+            color: var(--text-muted);
+            margin-right: 6px;
         }
         /* Chat suggestions */
         .chat-suggestions {
@@ -501,16 +749,148 @@
             padding: 10px 20px;
         }
         .suggestion-chip {
-            padding: 6px 12px;
-            border-radius: 16px;
+            padding: 5px 12px;
+            border-radius: 3px;
             border: 1px solid var(--border);
             background: transparent;
             color: var(--text-secondary);
-            font-size: 12px;
+            font-family: var(--mono);
+            font-size: 10px;
             cursor: pointer;
-            transition: all 0.15s;
+            transition: all 0.12s;
         }
         .suggestion-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* FCC Detail View */
+        .fcc-detail-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+        .fcc-detail-header {
+            background: var(--bg-secondary);
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .fcc-detail-header h3 {
+            font-family: var(--mono);
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .fcc-detail-header .fcc-id-badge {
+            font-family: var(--mono);
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 3px;
+            background: var(--accent-glow);
+            color: var(--accent);
+            border: 1px solid var(--accent-dim);
+            letter-spacing: 0.5px;
+        }
+        .fcc-detail-body {
+            padding: 16px 18px;
+        }
+        .fcc-field-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .fcc-field {
+            padding: 8px 10px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+        }
+        .fcc-field-label {
+            font-family: var(--mono);
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 3px;
+        }
+        .fcc-field-value {
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+        .fcc-field-value a { color: var(--accent); text-decoration: none; }
+        .fcc-field-value a:hover { text-decoration: underline; }
+        .fcc-detail-links {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .fcc-link-btn {
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 5px 12px;
+            border-radius: 3px;
+            border: 1px solid var(--accent-dim);
+            background: transparent;
+            color: var(--accent);
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.12s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .fcc-link-btn:hover { background: var(--accent); color: var(--bg-primary); }
+        .fcc-results-list { }
+        .fcc-result-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.12s;
+            border-left: 2px solid transparent;
+        }
+        .fcc-result-item:hover { border-left-color: var(--accent); background: var(--bg-hover); }
+        .fcc-result-item.expanded { border-left-color: var(--accent); border-color: var(--accent-dim); }
+        .fcc-result-summary {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .fcc-result-summary .fcc-rid {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--accent);
+            font-weight: 600;
+            min-width: 120px;
+        }
+        .fcc-result-summary .fcc-rdesc {
+            font-size: 12px;
+            color: var(--text-primary);
+            flex: 1;
+        }
+        .fcc-result-summary .fcc-rdate {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+        .fcc-result-detail {
+            display: none;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .fcc-result-item.expanded .fcc-result-detail { display: block; }
     </style>
 </head>
 <body>
@@ -519,10 +899,13 @@
     <div class="sidebar">
         <div class="sidebar-header">
             <h1>OpenGovDash</h1>
-            <p>Government Data Explorer</p>
+            <p>Research Terminal v1.0</p>
         </div>
         <div class="sidebar-nav" id="sidebar-nav">
             <div class="nav-section-title">Navigation</div>
+            <div class="nav-item" onclick="showWelcome()" data-page="welcome">
+                <span class="nav-icon">&#9881;</span> Setup
+            </div>
             <div class="nav-item active" onclick="showOverview()" data-page="overview">
                 <span class="nav-icon">&#127968;</span> Overview
             </div>
@@ -542,11 +925,72 @@
         <!-- Overview Page -->
         <div id="page-overview">
             <div class="topbar">
-                <h2>All Government Databases</h2>
+                <h2>&#9608; Research Terminal</h2>
                 <span class="source-badge" id="agency-count">Loading...</span>
             </div>
             <div class="content" id="overview-content">
-                <div class="loading"><div class="spinner"></div>Loading agencies...</div>
+                <div class="loading"><div class="spinner"></div>Initializing...</div>
+            </div>
+        </div>
+
+        <!-- Welcome/Setup Page -->
+        <div id="page-welcome" style="display:none;">
+            <div class="content">
+                <div class="welcome-container">
+                    <h2>Welcome to OpenGovDash</h2>
+                    <p class="subtitle">Access 21 government databases with 53+ data endpoints. Browse data freely or set up AI for cross-referencing.</p>
+
+                    <div class="setup-section">
+                        <h3>&#9989; Browse Data — No Setup Required</h3>
+                        <p>Most government APIs are open access. Click any agency in the sidebar to start exploring data immediately. Agencies marked with &#128275; require no authentication.</p>
+                    </div>
+
+                    <div class="setup-section">
+                        <h3>&#129302; AI Chatbot Setup (Optional)</h3>
+                        <p>The AI chatbot can cross-reference data across agencies, answer questions, and build dashboards. Choose your AI provider:</p>
+                        <div class="provider-grid" id="provider-grid">
+                            <div class="provider-card" onclick="selectProvider('free')">
+                                <h4>&#127881; Free Mode</h4>
+                                <div class="price"><span class="free-badge">FREE</span> No API key needed</div>
+                                <div class="desc">Uses Groq's free Llama 3 API. Rate limited but fully functional.</div>
+                            </div>
+                            <div class="provider-card selected" onclick="selectProvider('openai')">
+                                <h4>OpenAI</h4>
+                                <div class="price">Pay-per-use</div>
+                                <div class="desc">GPT-4o-mini. Best quality responses.</div>
+                            </div>
+                            <div class="provider-card" onclick="selectProvider('groq')">
+                                <h4>Groq</h4>
+                                <div class="price"><span class="free-badge">FREE TIER</span></div>
+                                <div class="desc">Llama 3 70B. Very fast inference.</div>
+                            </div>
+                            <div class="provider-card" onclick="selectProvider('gemini')">
+                                <h4>Google Gemini</h4>
+                                <div class="price"><span class="free-badge">FREE TIER</span></div>
+                                <div class="desc">Gemini 2.0 Flash. Google AI.</div>
+                            </div>
+                            <div class="provider-card" onclick="selectProvider('claude')">
+                                <h4>Anthropic Claude</h4>
+                                <div class="price">Pay-per-use</div>
+                                <div class="desc">Claude Sonnet. Great at analysis.</div>
+                            </div>
+                        </div>
+                        <div id="provider-key-input" style="margin-top:12px;">
+                            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;" id="provider-key-label">OpenAI API Key</label>
+                            <input id="welcome-api-key" type="password" placeholder="sk-..." style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:13px;outline:none;">
+                        </div>
+                    </div>
+
+                    <div class="setup-section">
+                        <h3>&#128736; Optional: Enhanced API Keys</h3>
+                        <p>Some agencies offer better access with a <code>data.gov</code> API key. Get one free at <a href="https://api.data.gov/signup/" target="_blank" style="color:var(--accent)">api.data.gov/signup</a></p>
+                        <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;margin-top:8px;">data.gov API Key (optional)</label>
+                        <input id="welcome-datagov-key" type="text" placeholder="Your data.gov API key" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:13px;outline:none;">
+                    </div>
+
+                    <button class="btn-primary" onclick="completeSetup()">Start Exploring &#8594;</button>
+                    <button class="btn-primary" onclick="completeSetup()" style="background:transparent;border:1px solid var(--border);color:var(--text-secondary);margin-left:8px;">Skip Setup</button>
+                </div>
             </div>
         </div>
 
@@ -572,7 +1016,7 @@
         <div id="page-chat" style="display:none;flex-direction:column;height:100%;">
             <div class="topbar">
                 <h2>AI Cross-Reference Chatbot</h2>
-                <span class="source-badge">Powered by OpenAI</span>
+                <span class="source-badge" id="chat-provider-badge">Powered by AI</span>
                 <button onclick="showApiKeyModal()" style="margin-left:auto;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);cursor:pointer;font-size:12px;">&#128273; API Key</button>
             </div>
             <div class="chat-container">
@@ -581,12 +1025,12 @@
                         <div class="chat-avatar">&#129302;</div>
                         <div class="chat-bubble">Welcome! I can help you cross-reference data across all government databases. Try asking me about connections between agencies, data patterns, or specific regulatory questions.
 
-To get started, please set your OpenAI API key using the key icon above.</div>
+Free mode is available by default — just start chatting! For better results, configure your preferred AI provider using the key icon above.</div>
                     </div>
                 </div>
                 <div class="chat-suggestions" id="chat-suggestions">
                     <button class="suggestion-chip" onclick="sendSuggestion(this)">What SEC filings relate to FDA drug approvals?</button>
-                    <button class="suggestion-chip" onclick="sendSuggestion(this)">Cross-reference FCC devices with FDA 510(k) data</button>
+                    <button class="suggestion-chip" onclick="sendSuggestion(this)">Look up FCC ID 2ABCB and cross-reference with FDA 510(k)</button>
                     <button class="suggestion-chip" onclick="sendSuggestion(this)">How do NIST CVEs connect to FTC enforcement?</button>
                     <button class="suggestion-chip" onclick="sendSuggestion(this)">Show relationships between Treasury data and FDIC banks</button>
                     <button class="suggestion-chip" onclick="sendSuggestion(this)">Create a dashboard of BLS employment vs Census demographics</button>
@@ -603,9 +1047,19 @@ To get started, please set your OpenAI API key using the key icon above.</div>
 <!-- API Key Modal -->
 <div id="api-key-modal" class="modal-overlay" style="display:none;">
     <div class="modal">
-        <h3>&#128273; API Key Settings</h3>
-        <label>OpenAI API Key (for chatbot)</label>
-        <input id="openai-key-input" type="password" placeholder="sk-...">
+        <h3>&#128273; AI Provider Settings</h3>
+        <label>AI Provider</label>
+        <select id="modal-provider-select" onchange="modalProviderChange()" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:13px;outline:none;">
+            <option value="free">Free Mode (Groq Llama 3)</option>
+            <option value="openai">OpenAI (GPT-4o-mini)</option>
+            <option value="groq">Groq (Llama 3 70B)</option>
+            <option value="gemini">Google Gemini (Flash)</option>
+            <option value="claude">Anthropic Claude (Sonnet)</option>
+        </select>
+        <div id="modal-key-section">
+            <label id="modal-key-label">API Key</label>
+            <input id="modal-key-input" type="password" placeholder="Enter API key...">
+        </div>
         <label>data.gov API Key (optional, for enhanced access)</label>
         <input id="datagov-key-input" type="text" placeholder="Your data.gov API key">
         <div class="btn-row">
@@ -625,7 +1079,46 @@ let currentView = 'cards';
 let chatHistory = [];
 let openaiKey = '';
 let datagovKey = '';
+let aiProvider = 'openai'; // 'openai', 'groq', 'gemini', 'claude', 'free'
+let groqKey = '';
+let geminiKey = '';
+let claudeKey = '';
 let useDirectApi = false;  // Will be set to true if Flask backend unavailable
+
+// Smart date formatter that handles various API date formats
+function formatDate(dateVal) {
+    if (!dateVal) return '';
+    const s = String(dateVal).trim();
+    // Already formatted strings like "2022 ACS", "Cycle: 2024"
+    if (/^(Cycle|FY|Q\d)/i.test(s) || /^\d{4}\s+\w/.test(s)) return s;
+    // YYYYMMDD format (FDA style)
+    if (/^\d{8}$/.test(s)) {
+        const y = s.slice(0,4), m = s.slice(4,6), d = s.slice(6,8);
+        return `${m}/${d}/${y}`;
+    }
+    // MM/DD/YYYY already
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) return s;
+    // Try standard Date parse
+    const d = new Date(s);
+    if (!isNaN(d.getTime()) && d.getFullYear() > 1900) {
+        return d.toLocaleDateString('en-US', {timeZone: 'UTC'});
+    }
+    // Just return as-is if nothing works
+    return s;
+}
+
+// CORS proxy wrapper for APIs that block browser requests
+async function corsFetch(url, options = {}) {
+    try {
+        const resp = await fetch(url, options);
+        if (resp.ok) return resp;
+        throw new Error(`HTTP ${resp.status}`);
+    } catch (e) {
+        // Try via CORS proxy
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+        return fetch(proxyUrl, options);
+    }
+}
 
 // ========== CLIENT-SIDE DIRECT API LAYER ==========
 // These functions call government APIs directly from the browser
@@ -711,7 +1204,7 @@ const DIRECT_API = {
                 exchange_rates: 'v1/accounting/od/rates_of_exchange'
             };
             const ep = endpoints[sub] || endpoints.national_debt;
-            const r = await fetch(`https://api.fiscaldata.treasury.gov/services/api/fiscal_service/${ep}?page[size]=20&sort=-record_date`);
+            const r = await corsFetch(`https://api.fiscaldata.treasury.gov/services/api/fiscal_service/${ep}?page[size]=20&sort=-record_date`);
             const d = await r.json();
             const data = d.data || [];
             if (sub === 'national_debt') return data.map(x => ({
@@ -787,11 +1280,17 @@ const DIRECT_API = {
                     date: p.earth_date || '', link: p.img_src || ''
                 }));
             }
-            const r = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${key}&count=10`);
+            // Get today + last 9 days of APOD, sorted newest first
+            const today = new Date();
+            const startDate = new Date(today);
+            startDate.setDate(today.getDate() - 9);
+            const fmt = d => d.toISOString().split('T')[0];
+            const r = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${key}&start_date=${fmt(startDate)}&end_date=${fmt(today)}`);
             const d = await r.json();
-            return (Array.isArray(d) ? d : [d]).map(x => ({
+            return (Array.isArray(d) ? d : [d]).reverse().map(x => ({
                 title: x.title || '', description: (x.explanation || '').substring(0,300),
-                date: x.date || '', link: x.hdurl || x.url || ''
+                date: x.date || '', link: x.hdurl || x.url || '',
+                media_type: x.media_type || 'image'
             }));
         }
     },
@@ -838,16 +1337,17 @@ const DIRECT_API = {
                 const r = await fetch('https://banks.data.fdic.gov/api/failures?limit=20&sort_by=FAILDATE&sort_order=DESC');
                 const d = await r.json();
                 return (d.data || []).map(x => ({
-                    title: x.data?.NAME || '', description: `${x.data?.CITY || ''}, ${x.data?.STATE || ''} | Deposits: $${(x.data?.TOTALDEPOSITS||0).toLocaleString()}`,
+                    title: x.data?.NAME || x.data?.INSTNAME || 'Unknown Bank',
+                    description: `${x.data?.CITY || ''}, ${x.data?.STATE || ''} | Deposits: $${(x.data?.TOTALDEPOSITS||0).toLocaleString()} | Acquiring: ${x.data?.ACQUIRINGINSTITUTION || 'N/A'}`,
                     date: x.data?.FAILDATE || '', link: 'https://www.fdic.gov/resources/resolutions/bank-failures/'
                 }));
             }
-            const r = await fetch('https://banks.data.fdic.gov/api/financials?limit=20&sort_by=REPDTE&sort_order=DESC');
+            const r = await fetch('https://banks.data.fdic.gov/api/institutions?limit=20&sort_by=ASSET&sort_order=DESC&filters=ACTIVE%3A1');
             const d = await r.json();
             return (d.data || []).map(x => ({
-                title: x.data?.REPNM || x.data?.INSTNAME || '',
-                description: `Assets: $${(x.data?.ASSET||0).toLocaleString()}K | Deposits: $${(x.data?.DEP||0).toLocaleString()}K`,
-                date: x.data?.REPDTE || '', link: 'https://www.fdic.gov/'
+                title: x.data?.INSTNAME || x.data?.REPNM || 'Unknown Institution',
+                description: `${x.data?.CITY || ''}, ${x.data?.STNAME || ''} | Assets: $${(x.data?.ASSET||0).toLocaleString()}K | Class: ${x.data?.INSTCAT || x.data?.SPECGRP || 'N/A'}`,
+                date: x.data?.REPDTE || x.data?.DATEUPDT || '', link: `https://www.fdic.gov/bank/individual/details/overview.html?newsFeedURL=/${x.data?.CERT || ''}`
             }));
         }
     },
@@ -953,8 +1453,293 @@ const DIRECT_API = {
                     link: `https://nvd.nist.gov/vuln/detail/${c.id||''}`, cvss_score: cvss };
             });
         }
+    },
+    fcc: {
+        fetch: async (sub, query) => {
+            // FCC ID Search — the main lookup
+            if (sub === 'equipment_auth' || (!sub && query)) {
+                return await fccEquipmentSearch(query);
+            }
+            // ECFS filings
+            if (sub === 'ecfs_filings') {
+                return await fccEcfsFilings(query);
+            }
+            // Consumer complaints via Socrata
+            if (sub === 'complaints') {
+                return await fccComplaints(query);
+            }
+            // Broadband providers
+            if (sub === 'broadband') {
+                return await fccBroadband();
+            }
+            // Default: equipment auth
+            return await fccEquipmentSearch(query);
+        }
     }
 };
+
+// ========== FCC API IMPLEMENTATIONS ==========
+
+async function fccEquipmentSearch(query) {
+    // FCC Equipment Authorization System
+    // No query: show recent equipment grants as cards
+    if (!query) {
+        try {
+            const r = await corsFetch('https://opendata.fcc.gov/resource/i5ic-sdri.json?$limit=25&$order=grant_date DESC');
+            const d = await r.json();
+            if (Array.isArray(d) && d.length > 0) {
+                return d.map(x => ({
+                    title: x.equipment_product_description || x.product_description || x.applicant_name || 'Unknown Device',
+                    description: `Applicant: ${x.applicant_name || x.grantee_name || 'N/A'} | FCC ID: ${(x.grantee_code||'') + (x.product_code||'')}`,
+                    date: x.grant_date || x.date_of_grant || '',
+                    link: `https://apps.fcc.gov/oetcf/eas/reports/ViewExhibitReport.cfm?mode=Exhibits&RequestTimeout=500&calledFromFrame=N&fcc_id=${(x.grantee_code||'') + (x.product_code||'')}`,
+                    fcc_id: (x.grantee_code||'') + (x.product_code||''),
+                    applicant: x.applicant_name || x.grantee_name || '',
+                    grantee_code: x.grantee_code || '',
+                    product_code: x.product_code || ''
+                }));
+            }
+        } catch(e) { /* fall through */ }
+        try {
+            const r = await corsFetch('https://opendata.fcc.gov/resource/3b3k-34jp.json?$limit=25&$order=:id DESC');
+            const d = await r.json();
+            if (Array.isArray(d) && d.length > 0) {
+                return d.map(x => ({
+                    title: x.grantee_name || x.applicant_name || 'Unknown',
+                    description: `Grantee Code: ${x.grantee_code || 'N/A'} | ${[x.physical_city, x.physical_state].filter(Boolean).join(', ')}`,
+                    date: x.last_update_date || '',
+                    link: '',
+                    grantee_code: x.grantee_code || '',
+                    grantee_name: x.grantee_name || ''
+                }));
+            }
+        } catch(e) { /* fall through */ }
+        return [{ title: 'Equipment Authorizations', description: 'Search by FCC ID (e.g. 2ABCB-1234), grantee code, or company name', date: '' }];
+    }
+
+    // === SEARCH MODE: return rich detail results flagged for special rendering ===
+    const q = query.trim().toUpperCase();
+    let granteeCode = '', productCode = '';
+    // Parse FCC ID format
+    if (/^[A-Z0-9]{3,8}[-]?[A-Z0-9]*$/i.test(q.replace(/-/g,''))) {
+        if (q.includes('-')) {
+            const parts = q.split('-');
+            granteeCode = parts[0];
+            productCode = parts.slice(1).join('-');
+        } else if (q.length <= 5) {
+            granteeCode = q;
+        } else {
+            granteeCode = q.substring(0, 5);
+            productCode = q.substring(5);
+        }
+    }
+
+    // Collect ALL raw data from multiple sources, then merge
+    let equipmentData = []; // from equipment auth dataset
+    let granteeInfo = null;  // from grantee registration dataset
+
+    // 1) Equipment authorization records
+    if (granteeCode) {
+        try {
+            let url = `https://opendata.fcc.gov/resource/i5ic-sdri.json?$limit=50&$where=grantee_code='${granteeCode}'`;
+            if (productCode) url += ` AND product_code='${productCode}'`;
+            const r = await corsFetch(url);
+            const d = await r.json();
+            if (Array.isArray(d)) equipmentData = d;
+        } catch(e) { console.log('Equipment data fetch failed:', e); }
+    }
+
+    // 2) Grantee registration info (company details)
+    if (granteeCode) {
+        try {
+            const r = await corsFetch(`https://opendata.fcc.gov/resource/3b3k-34jp.json?$limit=1&$where=grantee_code='${granteeCode}'`);
+            const d = await r.json();
+            if (Array.isArray(d) && d.length > 0) granteeInfo = d[0];
+        } catch(e) { console.log('Grantee info fetch failed:', e); }
+    }
+
+    // 3) If no grantee code (company name search), search by name
+    if (!granteeCode) {
+        try {
+            const r = await corsFetch(`https://opendata.fcc.gov/resource/3b3k-34jp.json?$limit=30&$where=upper(grantee_name) like '%25${encodeURIComponent(q)}%25'`);
+            const d = await r.json();
+            if (Array.isArray(d) && d.length > 0) {
+                // Return as clickable list of grantees — user picks one
+                return d.map(x => ({
+                    title: x.grantee_name || 'Unknown',
+                    description: `Grantee Code: ${x.grantee_code || ''} | ${[x.physical_city, x.physical_state, x.physical_country_code].filter(Boolean).join(', ')}`,
+                    date: x.last_update_date || '',
+                    link: '',
+                    grantee_code: x.grantee_code || '',
+                    grantee_name: x.grantee_name || '',
+                    _fcc_grantee_click: true // flag: clicking should re-search with this grantee code
+                }));
+            }
+        } catch(e) {}
+    }
+
+    // 4) Fallback: try HTML scrape of EAS
+    if (equipmentData.length === 0 && granteeCode) {
+        try {
+            const searchUrl = `https://apps.fcc.gov/oetcf/eas/reports/GenericSearchResult.cfm?RequestTimeout=500&calledFromFrame=Y&grantee_code=${granteeCode}&product_code=${productCode || ''}`;
+            const r = await corsFetch(searchUrl);
+            const html = await r.text();
+            const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+            for (const row of rows.slice(1, 30)) {
+                const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [];
+                if (cells.length >= 4) {
+                    const clean = s => s.replace(/<[^>]*>/g,'').trim();
+                    const id = clean(cells[0]||'');
+                    const app = clean(cells[1]||'');
+                    const desc = clean(cells[2]||'');
+                    const gdate = clean(cells[3]||'');
+                    if (id || app) {
+                        const gc = id.substring(0, Math.min(5, id.length));
+                        const pc = id.substring(Math.min(5, id.length));
+                        equipmentData.push({
+                            grantee_code: gc, product_code: pc,
+                            applicant_name: app,
+                            equipment_product_description: desc,
+                            grant_date: gdate
+                        });
+                    }
+                }
+            }
+        } catch(e) { console.log('EAS HTML parse failed:', e); }
+    }
+
+    if (equipmentData.length === 0 && !granteeInfo) {
+        return [{ title: `No FCC results for "${query}"`, description: 'Try an FCC ID (e.g. 2ABCB-1234), grantee code (e.g. BCG), or company name (e.g. Apple)', date: '' }];
+    }
+
+    // Build the special FCC detail result set
+    // First item is a meta-marker telling renderData to use FCC detail view
+    const results = [];
+    results.push({
+        _fcc_detail_view: true,
+        _query: query,
+        _grantee_code: granteeCode,
+        _product_code: productCode,
+        _grantee_info: granteeInfo,
+        _equipment: equipmentData,
+        title: `FCC Search: ${query}`,
+        description: `${equipmentData.length} equipment record(s) found`,
+        date: ''
+    });
+    return results;
+}
+
+async function fccEcfsFilings(query) {
+    // FCC Electronic Comment Filing System
+    let url = 'https://publicapi.fcc.gov/ecfs/filings?limit=25&sort=date_received,DESC';
+    if (query) url += `&q=${encodeURIComponent(query)}`;
+    try {
+        const r = await corsFetch(url);
+        const d = await r.json();
+        const filings = d.filings || d.results || d || [];
+        if (Array.isArray(filings) && filings.length > 0) {
+            return filings.map(f => ({
+                title: f.name_of_filer || f.filer || f.submitter || 'Anonymous Filer',
+                description: `Proceeding: ${f.proceedings?.[0]?.name || f.proceeding || 'N/A'} | Type: ${f.type_of_filing || f.filing_type || ''}${f.text_data ? ' | ' + (f.text_data || '').substring(0,150) : ''}`,
+                date: f.date_received || f.date_submission || f.date_posted || '',
+                link: f.id_submission ? `https://www.fcc.gov/ecfs/document/${f.id_submission}/1` : 'https://www.fcc.gov/ecfs/',
+                proceeding_number: f.proceedings?.[0]?.id || f.proceeding_number || '',
+                bureau: f.bureau || ''
+            }));
+        }
+    } catch(e) { console.log('ECFS filings failed:', e); }
+
+    // Fallback: try alternate format
+    try {
+        const r = await corsFetch('https://publicapi.fcc.gov/ecfs/filings?limit=25&sort=date_received,DESC');
+        const text = await r.text();
+        const d = JSON.parse(text);
+        if (d && typeof d === 'object') {
+            const items = d.filings || d.results || (Array.isArray(d) ? d : []);
+            return items.slice(0, 25).map(f => ({
+                title: f.name_of_filer || JSON.stringify(f).substring(0, 80),
+                description: 'ECFS Filing',
+                date: f.date_received || '',
+                link: 'https://www.fcc.gov/ecfs/'
+            }));
+        }
+    } catch(e) { /* fall through */ }
+
+    return [{ title: 'ECFS Filings', description: 'Unable to load filings. The FCC ECFS API may be temporarily unavailable. Visit the link to browse filings directly.', date: '', link: 'https://www.fcc.gov/ecfs/' }];
+}
+
+async function fccComplaints(query) {
+    // FCC Consumer Complaints via Socrata
+    let url = 'https://opendata.fcc.gov/resource/3xyp-aqkj.json?$limit=25&$order=ticket_created DESC';
+    if (query) url += `&$where=upper(issue) like '%25${encodeURIComponent(query.toUpperCase())}%25' OR upper(method) like '%25${encodeURIComponent(query.toUpperCase())}%25'`;
+    try {
+        const r = await corsFetch(url);
+        const d = await r.json();
+        if (Array.isArray(d) && d.length > 0) {
+            return d.map(x => ({
+                title: x.issue || x.issue_type || x.type_of_issue || 'Complaint',
+                description: `Method: ${x.method || 'N/A'} | Status: ${x.status || 'N/A'} | ${x.city ? x.city + ', ' : ''}${x.state || ''}`,
+                date: x.ticket_created || x.date_created || x.date_of_issue || '',
+                link: 'https://opendata.fcc.gov/Consumer/CGB-Consumer-Complaints-Data/3xyp-aqkj',
+                issue: x.issue || '',
+                method: x.method || '',
+                status: x.status || '',
+                state: x.state || ''
+            }));
+        }
+    } catch(e) { console.log('FCC complaints failed:', e); }
+
+    // Alternate complaint dataset
+    try {
+        const r = await corsFetch('https://opendata.fcc.gov/resource/sr6c-syda.json?$limit=25&$order=:id DESC');
+        const d = await r.json();
+        if (Array.isArray(d) && d.length > 0) {
+            return d.map(x => ({
+                title: x.type_of_issue || x.issue || Object.values(x)[0] || 'Complaint',
+                description: Object.entries(x).filter(([k]) => !['type_of_issue','issue'].includes(k)).map(([k,v]) => `${k}: ${v}`).slice(0,3).join(' | '),
+                date: x.date || '',
+                link: 'https://opendata.fcc.gov/'
+            }));
+        }
+    } catch(e) { /* fall through */ }
+
+    return [{ title: 'Consumer Complaints', description: 'Unable to load FCC complaint data. Try visiting the link directly.', date: '', link: 'https://opendata.fcc.gov/Consumer/CGB-Consumer-Complaints-Data/3xyp-aqkj' }];
+}
+
+async function fccBroadband() {
+    // Mobile broadband carrier data
+    try {
+        const r = await corsFetch('https://broadbandmap.fcc.gov/api/public/map/listMobileProviders');
+        const d = await r.json();
+        const providers = d.data || d.providers || d || [];
+        if (Array.isArray(providers) && providers.length > 0) {
+            return providers.slice(0, 30).map(p => ({
+                title: p.provider_name || p.holding_company_name || p.dba_name || p.name || 'Provider',
+                description: `Provider ID: ${p.provider_id || p.frn || 'N/A'} | Technology: ${p.technology_desc || p.technology || 'Various'}`,
+                date: '',
+                link: 'https://broadbandmap.fcc.gov/',
+                provider_id: p.provider_id || p.frn || '',
+                technology: p.technology_desc || p.technology || ''
+            }));
+        }
+    } catch(e) { console.log('Broadband map API failed:', e); }
+
+    // Fallback: FCC broadband Socrata dataset
+    try {
+        const r = await corsFetch('https://opendata.fcc.gov/resource/sgz3-kiqt.json?$limit=25');
+        const d = await r.json();
+        if (Array.isArray(d) && d.length > 0) {
+            return d.map(x => ({
+                title: x.provider_name || x.holding_company || Object.values(x)[0] || 'Provider',
+                description: Object.entries(x).filter(([k]) => k !== 'provider_name').map(([k,v]) => `${k}: ${v}`).slice(0,3).join(' | '),
+                date: '',
+                link: 'https://broadbandmap.fcc.gov/'
+            }));
+        }
+    } catch(e) { /* fall through */ }
+
+    return [{ title: 'Broadband Providers', description: 'Unable to load broadband data. The FCC Broadband Map API may require updated endpoints. Visit the link directly.', date: '', link: 'https://broadbandmap.fcc.gov/' }];
+}
 
 // Fallback agency metadata for client-side mode
 const CLIENT_AGENCIES = [
@@ -1008,11 +1793,11 @@ const CLIENT_AGENCIES = [
      data_categories:['Legal','Law Enforcement','Policy'],
      sub_sections:[{id:'press_releases',name:'Press Releases'},{id:'blog_posts',name:'Blog Posts'},{id:'speeches',name:'Speeches'},{id:'news',name:'News'}],
      endpoints:['Press Releases','Blog Posts','Speeches','News']},
-    {id:'fcc',name:'Federal Communications Commission',acronym:'FCC',description:'Broadband data, spectrum licenses, and consumer complaints',
-     base_url:'https://opendata.fcc.gov',auth_required:false,has_search:false,
+    {id:'fcc',name:'Federal Communications Commission',acronym:'FCC',description:'Equipment authorizations (FCC ID), ECFS filings, broadband data, and consumer complaints',
+     base_url:'https://apps.fcc.gov',auth_required:false,has_search:true,search_placeholder:'Search FCC ID (e.g. 2ABCB), company name, or keyword...',
      data_categories:['Communications','Broadband','Spectrum'],
-     sub_sections:[{id:'broadband',name:'Broadband Data'},{id:'spectrum',name:'Spectrum Licenses'},{id:'complaints',name:'Consumer Complaints'}],
-     endpoints:['Broadband','Spectrum','Complaints']},
+     sub_sections:[{id:'equipment_auth',name:'Equipment Authorizations'},{id:'ecfs_filings',name:'ECFS Filings'},{id:'complaints',name:'Consumer Complaints'},{id:'broadband',name:'Broadband Providers'}],
+     endpoints:['Equipment Auth (FCC ID)','ECFS Filings','Complaints','Broadband']},
     {id:'ftc',name:'Federal Trade Commission',acronym:'FTC',description:'Consumer protection, antitrust enforcement, press releases and cases',
      base_url:'https://www.ftc.gov/api',auth_required:false,has_search:false,
      data_categories:['Consumer Protection','Antitrust','Privacy'],
@@ -1082,6 +1867,12 @@ async function init() {
     }
     renderSidebar();
     renderOverview();
+    // Show welcome page on first visit
+    if (!sessionStorage.getItem('ogd_setup_done')) {
+        setActivePage('welcome');
+    }
+    // Fetch live previews in background
+    fetchOverviewPreviews();
 }
 
 function renderSidebar() {
@@ -1108,26 +1899,123 @@ function renderSidebar() {
     document.getElementById('agency-count').textContent = `${agencies.length} agencies`;
 }
 
+let overviewCatFilter = 'All';
+let overviewAuthFilter = 'all'; // 'all', 'open', 'auth'
+let overviewPreviews = {}; // cache for live data previews
+
 function renderOverview() {
     const container = document.getElementById('overview-content');
-    let html = `<div class="stats-row">
-        <div class="stat-card"><div class="stat-value">${agencies.length}</div><div class="stat-label">Government Agencies</div></div>
-        <div class="stat-card"><div class="stat-value">${agencies.reduce((sum, a) => sum + (a.endpoints || []).length, 0)}</div><div class="stat-label">Data Endpoints</div></div>
-        <div class="stat-card"><div class="stat-value">${agencies.filter(a => !a.auth_required).length}</div><div class="stat-label">No Auth Required</div></div>
-        <div class="stat-card"><div class="stat-value">${new Set(agencies.flatMap(a => a.data_categories || [])).size}</div><div class="stat-label">Data Categories</div></div>
+    const totalEndpoints = agencies.reduce((sum, a) => sum + (a.endpoints || []).length, 0);
+    const openCount = agencies.filter(a => !a.auth_required).length;
+    const authCount = agencies.filter(a => a.auth_required).length;
+    const allCats = [...new Set(agencies.flatMap(a => a.data_categories || []))].sort();
+
+    // Consolidated stats box
+    let html = `<div class="stats-box">
+        <div class="stat-item"><span class="stat-value">${agencies.length}</span><span class="stat-label">Agencies</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat-item"><span class="stat-value">${totalEndpoints}</span><span class="stat-label">Endpoints</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat-item"><span class="stat-value">${openCount}</span><span class="stat-label">Open Access</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat-item"><span class="stat-value">${allCats.length}</span><span class="stat-label">Categories</span></div>
     </div>`;
+
+    // Auth filter buttons
+    html += `<div class="filter-bar">
+        <span class="filter-label">Access:</span>
+        <button class="filter-btn ${overviewAuthFilter === 'all' ? 'active' : ''}" onclick="setOverviewAuth('all')">All<span class="filter-count">${agencies.length}</span></button>
+        <button class="filter-btn ${overviewAuthFilter === 'open' ? 'active' : ''}" onclick="setOverviewAuth('open')">No Auth Required<span class="filter-count">${openCount}</span></button>
+        <button class="filter-btn ${overviewAuthFilter === 'auth' ? 'active' : ''}" onclick="setOverviewAuth('auth')">Auth Required<span class="filter-count">${authCount}</span></button>
+    </div>`;
+
+    // Category filter buttons
+    html += `<div class="filter-bar">
+        <span class="filter-label">Category:</span>
+        <button class="filter-btn ${overviewCatFilter === 'All' ? 'active' : ''}" onclick="setOverviewCat('All')">All</button>`;
+    for (const cat of allCats) {
+        const count = agencies.filter(a => (a.data_categories || []).includes(cat)).length;
+        html += `<button class="filter-btn ${overviewCatFilter === cat ? 'active' : ''}" onclick="setOverviewCat('${cat}')">${cat}<span class="filter-count">${count}</span></button>`;
+    }
+    html += `</div>`;
+
+    // Filter agencies
+    let filtered = agencies;
+    if (overviewAuthFilter === 'open') filtered = filtered.filter(a => !a.auth_required);
+    else if (overviewAuthFilter === 'auth') filtered = filtered.filter(a => a.auth_required);
+    if (overviewCatFilter !== 'All') filtered = filtered.filter(a => (a.data_categories || []).includes(overviewCatFilter));
+
+    // Agency cards with live preview
     html += '<div class="overview-grid">';
-    for (const a of agencies) {
+    for (const a of filtered) {
         const tags = (a.data_categories || []).map(c => `<span class="tag">${c}</span>`).join('');
+        const authBadge = a.auth_required
+            ? '<span style="color:var(--warning);font-family:var(--mono);font-size:10px;">&#128274; AUTH</span>'
+            : '<span style="color:var(--success);font-family:var(--mono);font-size:10px;">&#128275; OPEN</span>';
+        const endpointCount = (a.endpoints || []).length;
+
+        // Live preview items
+        let previewHtml = '';
+        const cached = overviewPreviews[a.id];
+        if (cached && cached.length > 0) {
+            previewHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border);">';
+            for (const item of cached.slice(0, 3)) {
+                const d = formatDate(item.date);
+                const t = (item.title || '').substring(0, 60);
+                previewHtml += `<div class="agency-preview-item">${d ? `<span class="preview-date">${d}</span>` : ''}${t}</div>`;
+            }
+            previewHtml += '</div>';
+        } else if (cached === undefined) {
+            previewHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-muted);animation:pulse-glow 1.5s ease-in-out infinite;">Loading previews...</div>';
+        }
+
         html += `<div class="agency-overview-card" onclick="selectAgency('${a.id}')">
-            <h3>${a.name || a.id}</h3>
-            <div class="acronym">${a.acronym || ''} ${a.auth_required ? '&#128274; Auth Required' : '&#128275; Open Access'}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <h3>${a.acronym || a.id}</h3>
+                ${authBadge}
+            </div>
+            <div class="acronym">${a.name} &middot; ${endpointCount} endpoints</div>
             <p>${a.description || ''}</p>
             <div class="tags">${tags}</div>
+            ${previewHtml}
         </div>`;
     }
     html += '</div>';
     container.innerHTML = html;
+}
+
+function setOverviewCat(cat) {
+    overviewCatFilter = cat;
+    renderOverview();
+}
+
+function setOverviewAuth(auth) {
+    overviewAuthFilter = auth;
+    renderOverview();
+}
+
+// Fetch live preview data for all agencies on overview
+async function fetchOverviewPreviews() {
+    const previewAgencies = agencies.filter(a => !a.auth_required && DIRECT_API[a.id]);
+    const batchSize = 4;
+    for (let i = 0; i < previewAgencies.length; i += batchSize) {
+        const batch = previewAgencies.slice(i, i + batchSize);
+        await Promise.allSettled(batch.map(async (a) => {
+            try {
+                const sub = (a.sub_sections && a.sub_sections[0]) ? a.sub_sections[0].id : '';
+                const data = await DIRECT_API[a.id].fetch(sub);
+                overviewPreviews[a.id] = (data || []).slice(0, 3);
+            } catch (e) {
+                overviewPreviews[a.id] = [];
+            }
+            renderOverview();
+        }));
+    }
+    // Mark agencies without DIRECT_API as empty
+    for (const a of agencies) {
+        if (overviewPreviews[a.id] === undefined) overviewPreviews[a.id] = [];
+    }
+    renderOverview();
 }
 
 // Page switching
@@ -1136,13 +2024,55 @@ function setActivePage(page) {
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
 
+    document.getElementById('page-welcome').style.display = page === 'welcome' ? 'block' : 'none';
     document.getElementById('page-overview').style.display = page === 'overview' ? 'block' : 'none';
     document.getElementById('page-agency').style.display = page.startsWith('agency-') ? 'flex' : 'none';
     document.getElementById('page-chat').style.display = page === 'chat' ? 'flex' : 'none';
 }
 
+function showWelcome() { setActivePage('welcome'); }
 function showOverview() { setActivePage('overview'); }
-function showChat() { setActivePage('chat'); }
+function showChat() {
+    setActivePage('chat');
+    const names = { free: 'Free (Llama 3)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
+    document.getElementById('chat-provider-badge').textContent = `Powered by ${names[aiProvider] || 'AI'}`;
+}
+
+// Welcome page functions
+function selectProvider(provider) {
+    aiProvider = provider;
+    document.querySelectorAll('.provider-card').forEach(c => c.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+    const keyInput = document.getElementById('provider-key-input');
+    const keyLabel = document.getElementById('provider-key-label');
+    const keyField = document.getElementById('welcome-api-key');
+    if (provider === 'free') {
+        keyInput.style.display = 'none';
+    } else {
+        keyInput.style.display = 'block';
+        const labels = { openai: 'OpenAI API Key', groq: 'Groq API Key', gemini: 'Google Gemini API Key', claude: 'Anthropic API Key' };
+        const placeholders = { openai: 'sk-...', groq: 'gsk_...', gemini: 'AI...', claude: 'sk-ant-...' };
+        keyLabel.textContent = labels[provider] || 'API Key';
+        keyField.placeholder = placeholders[provider] || 'Enter API key...';
+    }
+}
+
+function completeSetup() {
+    const keyField = document.getElementById('welcome-api-key');
+    const dgField = document.getElementById('welcome-datagov-key');
+    if (keyField && keyField.value.trim()) {
+        const key = keyField.value.trim();
+        if (aiProvider === 'openai') openaiKey = key;
+        else if (aiProvider === 'groq') groqKey = key;
+        else if (aiProvider === 'gemini') geminiKey = key;
+        else if (aiProvider === 'claude') claudeKey = key;
+    }
+    if (dgField && dgField.value.trim()) {
+        datagovKey = dgField.value.trim();
+    }
+    try { sessionStorage.setItem('ogd_setup_done', '1'); } catch(e) {}
+    showOverview();
+}
 
 // Agency selection
 async function selectAgency(agencyId) {
@@ -1191,6 +2121,14 @@ function selectSubSection(subId) {
 async function fetchAgencyData(searchQuery) {
     const container = document.getElementById('agency-content');
     container.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching data...</div>';
+    // Reset APOD index on new fetch
+    apodIndex = 0;
+    // Hide view controls for special views (APOD)
+    const viewControls = document.querySelector('.view-controls');
+    if (viewControls) {
+        const hideViewControls = (currentAgency?.id === 'nasa' && currentSubSection === 'apod');
+        viewControls.style.display = hideViewControls ? 'none' : 'flex';
+    }
 
     if (useDirectApi && DIRECT_API[currentAgency.id]) {
         // Client-side direct API calls
@@ -1247,11 +2185,29 @@ function renderData() {
         return;
     }
 
+    // Special view: NASA APOD - show image prominently
+    if (currentAgency?.id === 'nasa' && currentSubSection === 'apod') {
+        renderApodView(container);
+        return;
+    }
+
+    // Special view: FCC detail view when search results have _fcc_detail_view flag
+    if (currentAgency?.id === 'fcc' && currentData[0]?._fcc_detail_view) {
+        renderFccDetailView(container, currentData[0]);
+        return;
+    }
+
+    // Special view: FCC grantee list (clickable to drill into grantee code)
+    if (currentAgency?.id === 'fcc' && currentData[0]?._fcc_grantee_click) {
+        renderFccGranteeList(container, currentData);
+        return;
+    }
+
     if (currentView === 'cards') {
         let html = '<div class="cards-grid">';
         for (const item of currentData) {
             const desc = (item.description || '').substring(0, 200);
-            const dateStr = item.date ? new Date(item.date).toLocaleDateString('en-US', {timeZone: 'UTC'}) : '';
+            const dateStr = formatDate(item.date);
             const link = item.link ? `<a href="${item.link}" target="_blank" rel="noopener">View Source &#8599;</a>` : '';
 
             // Extra fields
@@ -1301,6 +2257,214 @@ function renderData() {
     }
 }
 
+// NASA APOD special view
+let apodIndex = 0;
+function renderApodView(container) {
+    const item = currentData[apodIndex] || currentData[0];
+    if (!item) return;
+    const isVideo = item.media_type === 'video' || (item.link && (item.link.includes('youtube') || item.link.includes('vimeo')));
+    const imgSrc = item.link || '';
+    const prevDisabled = apodIndex >= currentData.length - 1 ? 'opacity:0.3;pointer-events:none;' : '';
+    const nextDisabled = apodIndex <= 0 ? 'opacity:0.3;pointer-events:none;' : '';
+
+    container.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;height:100%;">
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <button onclick="apodNav('today')" class="sub-tab ${apodIndex === 0 ? 'active' : ''}" style="font-size:13px;padding:8px 20px;">Today's Picture</button>
+                <button onclick="apodNav('prev')" class="sub-tab ${apodIndex > 0 ? 'active' : ''}" style="font-size:13px;padding:8px 20px;${prevDisabled}">&#8592; Previous</button>
+                <button onclick="apodNav('next')" class="sub-tab" style="font-size:13px;padding:8px 20px;${nextDisabled}">Next &#8594;</button>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;width:100%;overflow:hidden;">
+                ${isVideo
+                    ? `<iframe src="${imgSrc}" style="width:90%;max-width:900px;height:500px;border:none;border-radius:10px;" allowfullscreen></iframe>`
+                    : `<img src="${imgSrc}" alt="${item.title || ''}" style="max-width:90%;max-height:calc(100vh - 280px);border-radius:10px;box-shadow:0 4px 30px rgba(0,0,0,0.5);object-fit:contain;">`
+                }
+            </div>
+            <div style="max-width:800px;text-align:center;margin-top:12px;">
+                <h3 style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:4px;">${item.title || 'Astronomy Picture of the Day'}</h3>
+                <div style="font-size:12px;color:var(--accent);margin-bottom:8px;">${formatDate(item.date)}</div>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;max-height:120px;overflow-y:auto;">${item.description || ''}</p>
+            </div>
+        </div>`;
+}
+
+function apodNav(dir) {
+    if (dir === 'today') apodIndex = 0;
+    else if (dir === 'prev') apodIndex = Math.min(apodIndex + 1, currentData.length - 1);
+    else if (dir === 'next') apodIndex = Math.max(apodIndex - 1, 0);
+    renderApodView(document.getElementById('agency-content'));
+}
+
+// Also hide the view controls (Cards/Table) for APOD and FCC detail
+const origSelectAgency = selectAgency;
+
+// ========== FCC DETAIL VIEW ==========
+
+function renderFccDetailView(container, meta) {
+    const gi = meta._grantee_info;
+    const equipment = meta._equipment || [];
+    const gc = meta._grantee_code;
+    const pc = meta._product_code;
+
+    let html = '';
+
+    // Grantee/Company info panel
+    if (gi) {
+        html += `<div class="fcc-detail-panel">
+            <div class="fcc-detail-header">
+                <h3>Grantee: ${gi.grantee_name || gc}</h3>
+                <span class="fcc-id-badge">${gc}</span>
+            </div>
+            <div class="fcc-detail-body">
+                <div class="fcc-field-grid">`;
+        const granteeFields = [
+            ['Grantee Name', gi.grantee_name],
+            ['Grantee Code', gi.grantee_code],
+            ['Contact', gi.contact_name],
+            ['Email', gi.contact_email],
+            ['Phone', gi.contact_phone],
+            ['Address', [gi.physical_address_line_1, gi.physical_address_line_2].filter(Boolean).join(', ')],
+            ['City', gi.physical_city],
+            ['State', gi.physical_state],
+            ['Zip', gi.physical_zip_code],
+            ['Country', gi.physical_country_code],
+            ['Last Updated', gi.last_update_date],
+        ];
+        for (const [label, val] of granteeFields) {
+            if (val) {
+                html += `<div class="fcc-field">
+                    <div class="fcc-field-label">${label}</div>
+                    <div class="fcc-field-value">${escapeHtml(String(val))}</div>
+                </div>`;
+            }
+        }
+        html += `</div></div></div>`;
+    }
+
+    // Equipment records header
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 10px;">
+        <div style="font-family:var(--mono);font-size:12px;color:var(--text-primary);">
+            Equipment Authorizations <span style="color:var(--accent);">(${equipment.length})</span>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-muted);">
+            Click a device to expand full details
+        </div>
+    </div>`;
+
+    // Equipment list — each item is expandable
+    html += '<div class="fcc-results-list">';
+    for (let i = 0; i < equipment.length; i++) {
+        const e = equipment[i];
+        const fccId = (e.grantee_code||'') + (e.product_code||'');
+        const desc = e.equipment_product_description || e.product_description || 'Device';
+        const applicant = e.applicant_name || '';
+        const grantDate = formatDate(e.grant_date || e.date_of_grant || '');
+
+        // Collect all non-empty fields for detail view
+        const allFields = [];
+        const fieldMap = {
+            'FCC ID': fccId,
+            'Product Description': e.equipment_product_description || e.product_description,
+            'Applicant': e.applicant_name,
+            'Grantee Code': e.grantee_code,
+            'Product Code': e.product_code,
+            'Grant Date': formatDate(e.grant_date || e.date_of_grant),
+            'Expiration Date': formatDate(e.expiration_date),
+            'Equipment Class': e.equipment_class,
+            'Lower Frequency (MHz)': e.lower_frequency,
+            'Upper Frequency (MHz)': e.upper_frequency,
+            'Power Output (W)': e.power_output,
+            'Emission Designator': e.emission_designator,
+            'Tolerance': e.tolerance,
+            'Modulation Type': e.modulation_type,
+            'Test Firm': e.test_firm,
+            'TCB Scope': e.tcb_scope,
+            'Application Purpose': e.application_purpose,
+            'Grant Notes': e.grant_notes,
+            'Rule Parts': e.rule_parts,
+        };
+        // Also add any raw fields from the API not in our map
+        for (const [k, v] of Object.entries(e)) {
+            if (v && typeof v === 'string' && v.trim() && !Object.values(fieldMap).includes(v)) {
+                const prettyKey = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                if (!fieldMap[prettyKey]) fieldMap[prettyKey] = v;
+            }
+        }
+
+        let detailFieldsHtml = '<div class="fcc-field-grid">';
+        for (const [label, val] of Object.entries(fieldMap)) {
+            if (val && String(val).trim()) {
+                detailFieldsHtml += `<div class="fcc-field">
+                    <div class="fcc-field-label">${label}</div>
+                    <div class="fcc-field-value">${escapeHtml(String(val))}</div>
+                </div>`;
+            }
+        }
+        detailFieldsHtml += '</div>';
+
+        // Links to FCC pages for this device
+        const exhibitUrl = `https://apps.fcc.gov/oetcf/eas/reports/ViewExhibitReport.cfm?mode=Exhibits&RequestTimeout=500&calledFromFrame=N&application_id=&fcc_id=${fccId}`;
+        const grantUrl = `https://apps.fcc.gov/oetcf/eas/reports/ViewExhibitReport.cfm?mode=Grant&RequestTimeout=500&calledFromFrame=N&application_id=&fcc_id=${fccId}`;
+        const corrUrl = `https://apps.fcc.gov/oetcf/eas/reports/ViewExhibitReport.cfm?mode=Correspondence&RequestTimeout=500&calledFromFrame=N&application_id=&fcc_id=${fccId}`;
+        const fccidIoUrl = `https://fccid.io/${fccId}`;
+
+        html += `<div class="fcc-result-item" id="fcc-item-${i}" onclick="toggleFccItem(${i})">
+            <div class="fcc-result-summary">
+                <span class="fcc-rid">${fccId || 'N/A'}</span>
+                <span class="fcc-rdesc">${escapeHtml(desc)}</span>
+                <span class="fcc-rdate">${grantDate}</span>
+            </div>
+            <div class="fcc-result-detail">
+                ${detailFieldsHtml}
+                <div class="fcc-detail-links">
+                    <a class="fcc-link-btn" href="${exhibitUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#128196; Test Reports &amp; Exhibits</a>
+                    <a class="fcc-link-btn" href="${grantUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#9989; Grant Document</a>
+                    <a class="fcc-link-btn" href="${corrUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#128231; Correspondence</a>
+                    <a class="fcc-link-btn" href="${fccidIoUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#127760; fccid.io</a>
+                </div>
+            </div>
+        </div>`;
+    }
+    html += '</div>';
+
+    container.innerHTML = html;
+
+    // Hide cards/table view controls for this mode
+    const vc = document.querySelector('.view-controls');
+    if (vc) vc.style.display = 'none';
+}
+
+function toggleFccItem(index) {
+    const el = document.getElementById(`fcc-item-${index}`);
+    if (el) el.classList.toggle('expanded');
+}
+
+function renderFccGranteeList(container, data) {
+    let html = `<div style="font-family:var(--mono);font-size:12px;color:var(--text-primary);margin-bottom:12px;">
+        Found <span style="color:var(--accent);">${data.length}</span> matching grantees — click one to see all their FCC filings
+    </div>`;
+    html += '<div class="fcc-results-list">';
+    for (const item of data) {
+        html += `<div class="fcc-result-item" onclick="fccDrillGrantee('${escapeHtml(item.grantee_code || '')}')">
+            <div class="fcc-result-summary">
+                <span class="fcc-rid">${item.grantee_code || ''}</span>
+                <span class="fcc-rdesc">${escapeHtml(item.title || '')}</span>
+                <span class="fcc-rdate">${item.description || ''}</span>
+            </div>
+        </div>`;
+    }
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function fccDrillGrantee(code) {
+    if (!code) return;
+    // Put the grantee code in the search box and re-search
+    const searchInput = document.getElementById('agency-search');
+    if (searchInput) searchInput.value = code;
+    fetchAgencyData(code);
+}
+
 // Chat functions
 const CHAT_SYSTEM_PROMPT = `You are an AI assistant for OpenGovDash, a government data dashboard.
 You help users analyze, cross-reference, and understand data from multiple US government agencies.
@@ -1312,7 +2476,11 @@ NASA (space data), FTC (consumer protection), NIST (CVE vulnerabilities), SAM.go
 FEC (campaign finance), FDIC (banking), NIH (clinical trials, PubMed), LOC (library), NARA (archives), DOT/NHTSA (vehicle recalls).
 
 Cross-reference relationships:
-- FCC device registrations may also appear in FDA 510(k) for medical devices
+- FCC device registrations (FCC ID) may also appear in FDA 510(k) for medical devices that transmit RF
+- FCC grantee codes map to specific companies — search SEC EDGAR for their filings
+- FCC Equipment Authorization data includes frequency ranges, power output, emission designators
+- An FCC ID has two parts: grantee code (3-5 chars identifying the company) + product code (device identifier)
+- To fully research a device: search FCC ID for equipment details, then cross-ref the applicant in SEC, FDA 510(k), and FTC
 - SEC filings for pharma companies relate to FDA drug approvals
 - EPA facility data connects with SEC environmental disclosures
 - FDIC bank data connects with Treasury financial data
@@ -1323,11 +2491,107 @@ Cross-reference relationships:
 
 Analyze data, suggest cross-references, and explain regulatory relationships.`;
 
+function getActiveKey() {
+    if (aiProvider === 'openai') return openaiKey;
+    if (aiProvider === 'groq') return groqKey;
+    if (aiProvider === 'gemini') return geminiKey;
+    if (aiProvider === 'claude') return claudeKey;
+    if (aiProvider === 'free') return 'free';
+    return '';
+}
+
+function buildMessages(msg) {
+    let systemContent = CHAT_SYSTEM_PROMPT;
+    if (currentData.length > 0) {
+        systemContent += `\n\nCurrent data context:\nAgency: ${currentAgency?.name}\nSample data: ${JSON.stringify(currentData.slice(0,3)).substring(0,1500)}`;
+    }
+    const messages = [{role:'system', content: systemContent}];
+    for (const h of chatHistory.slice(-10)) {
+        messages.push({role: h.role, content: h.content});
+    }
+    messages.push({role:'user', content: msg});
+    return messages;
+}
+
+async function callAI(messages) {
+    const provider = aiProvider;
+
+    if (provider === 'free' || provider === 'groq') {
+        // Groq API (free tier uses Llama 3)
+        const key = provider === 'free' ? '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' : groqKey;
+        const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${key}`},
+            body: JSON.stringify({ model: provider === 'free' ? 'llama-3.3-70b-versatile' : 'llama-3.3-70b-versatile', messages, max_tokens:2000, temperature:0.7 })
+        });
+        return await resp.json();
+    }
+
+    if (provider === 'openai') {
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${openaiKey}`},
+            body: JSON.stringify({ model:'gpt-4o-mini', messages, max_tokens:2000, temperature:0.7 })
+        });
+        return await resp.json();
+    }
+
+    if (provider === 'gemini') {
+        // Gemini uses a different format
+        const contents = messages.filter(m => m.role !== 'system').map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{text: m.content}]
+        }));
+        const systemInstruction = messages.find(m => m.role === 'system');
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                contents,
+                systemInstruction: systemInstruction ? {parts:[{text:systemInstruction.content}]} : undefined,
+                generationConfig: { maxOutputTokens: 2000, temperature: 0.7 }
+            })
+        });
+        const data = await resp.json();
+        if (data.error) return { error: data.error };
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response';
+        return { choices: [{ message: { content: text } }] };
+    }
+
+    if (provider === 'claude') {
+        const systemMsg = messages.find(m => m.role === 'system')?.content || '';
+        const userMsgs = messages.filter(m => m.role !== 'system');
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type':'application/json',
+                'x-api-key': claudeKey,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 2000,
+                system: systemMsg,
+                messages: userMsgs
+            })
+        });
+        const data = await resp.json();
+        if (data.error) return { error: data.error };
+        const text = data.content?.[0]?.text || 'No response';
+        return { choices: [{ message: { content: text } }] };
+    }
+
+    throw new Error(`Unknown provider: ${provider}`);
+}
+
 async function sendChat() {
     const input = document.getElementById('chat-input');
     const msg = input.value.trim();
     if (!msg) return;
-    if (!openaiKey) {
+
+    const key = getActiveKey();
+    if (!key) {
         showApiKeyModal();
         return;
     }
@@ -1337,45 +2601,9 @@ async function sendChat() {
     const typingId = 'typing-' + Date.now();
     appendTyping(typingId);
 
-    // Try Flask backend first, then direct OpenAI call
-    if (!useDirectApi) {
-        try {
-            const resp = await fetch(`${API_BASE}/api/chat`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    message: msg, openai_api_key: openaiKey, history: chatHistory,
-                    context_data: currentData.length > 0 ? { agency: currentAgency?.name, data_sample: currentData.slice(0, 5) } : {}
-                })
-            });
-            const data = await resp.json();
-            removeTyping(typingId);
-            if (data.error) appendChat('assistant', `Error: ${data.error}`);
-            else appendChat('assistant', data.reply);
-            return;
-        } catch (e) {
-            // Fall through to direct mode
-        }
-    }
-
-    // Direct OpenAI call from browser
     try {
-        let systemContent = CHAT_SYSTEM_PROMPT;
-        if (currentData.length > 0) {
-            systemContent += `\n\nCurrent data context:\nAgency: ${currentAgency?.name}\nSample data: ${JSON.stringify(currentData.slice(0,3)).substring(0,1500)}`;
-        }
-        const messages = [{role:'system', content: systemContent}];
-        for (const h of chatHistory.slice(-10)) {
-            messages.push({role: h.role, content: h.content});
-        }
-        messages.push({role:'user', content: msg});
-
-        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${openaiKey}`},
-            body: JSON.stringify({ model:'gpt-4o-mini', messages, max_tokens:2000, temperature:0.7 })
-        });
-        const data = await resp.json();
+        const messages = buildMessages(msg);
+        const data = await callAI(messages);
         removeTyping(typingId);
 
         if (data.error) {
@@ -1429,8 +2657,37 @@ function escapeHtml(text) {
 // API Key modal
 function showApiKeyModal() {
     document.getElementById('api-key-modal').style.display = 'flex';
-    document.getElementById('openai-key-input').value = openaiKey;
+    document.getElementById('modal-provider-select').value = aiProvider;
     document.getElementById('datagov-key-input').value = datagovKey;
+    modalProviderChange();
+    // Load existing key
+    const keyInput = document.getElementById('modal-key-input');
+    if (aiProvider === 'openai') keyInput.value = openaiKey;
+    else if (aiProvider === 'groq') keyInput.value = groqKey;
+    else if (aiProvider === 'gemini') keyInput.value = geminiKey;
+    else if (aiProvider === 'claude') keyInput.value = claudeKey;
+}
+
+function modalProviderChange() {
+    const provider = document.getElementById('modal-provider-select').value;
+    const keySection = document.getElementById('modal-key-section');
+    const keyLabel = document.getElementById('modal-key-label');
+    const keyInput = document.getElementById('modal-key-input');
+    if (provider === 'free') {
+        keySection.style.display = 'none';
+    } else {
+        keySection.style.display = 'block';
+        const labels = { openai: 'OpenAI API Key', groq: 'Groq API Key', gemini: 'Google Gemini API Key', claude: 'Anthropic API Key' };
+        const placeholders = { openai: 'sk-...', groq: 'gsk_...', gemini: 'AI...', claude: 'sk-ant-...' };
+        keyLabel.textContent = labels[provider] || 'API Key';
+        keyInput.placeholder = placeholders[provider] || 'Enter API key...';
+        // Load existing key for this provider
+        if (provider === 'openai') keyInput.value = openaiKey;
+        else if (provider === 'groq') keyInput.value = groqKey;
+        else if (provider === 'gemini') keyInput.value = geminiKey;
+        else if (provider === 'claude') keyInput.value = claudeKey;
+        else keyInput.value = '';
+    }
 }
 
 function closeApiKeyModal() {
@@ -1438,7 +2695,12 @@ function closeApiKeyModal() {
 }
 
 function saveApiKeys() {
-    openaiKey = document.getElementById('openai-key-input').value.trim();
+    aiProvider = document.getElementById('modal-provider-select').value;
+    const key = document.getElementById('modal-key-input')?.value?.trim() || '';
+    if (aiProvider === 'openai') openaiKey = key;
+    else if (aiProvider === 'groq') groqKey = key;
+    else if (aiProvider === 'gemini') geminiKey = key;
+    else if (aiProvider === 'claude') claudeKey = key;
     datagovKey = document.getElementById('datagov-key-input').value.trim();
     closeApiKeyModal();
 }
