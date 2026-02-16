@@ -640,6 +640,27 @@
         .provider-card h4 { font-family: var(--mono); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
         .provider-card .price { font-family: var(--mono); font-size: 10px; color: var(--success); }
         .provider-card .desc { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .provider-setup-option {
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
+            border-radius: 0;
+            padding: 8px;
+            text-align: center;
+            font-family: var(--mono);
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+        .provider-setup-option:hover { border-color: var(--accent); background: var(--accent-glow); }
+        .provider-setup-option .pso-name { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+        .provider-setup-option .pso-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 0;
+            font-family: var(--mono);
+        }
+        .provider-setup-option .pso-btn:hover { border-color: var(--accent); color: var(--accent); }
         .btn-primary {
             padding: 9px 20px;
             border-radius: 0;
@@ -1125,12 +1146,12 @@
                         <h3><span class="svg-icon" style="margin-right:6px;color:var(--accent);"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="10" height="8" rx="1"/><path d="M6 9h0m4 0h0" stroke-linecap="round"/><path d="M8 5V3m-4 4H2m12 0h-2"/></svg></span>AI Chatbot Setup (Optional)</h3>
                         <p>The AI chatbot can cross-reference data across agencies, answer questions, and build dashboards. Choose your AI provider:</p>
                         <div class="provider-grid" id="provider-grid">
-                            <div class="provider-card" onclick="selectProvider('free')">
+                            <div class="provider-card selected" onclick="selectProvider('free')">
                                 <h4>Free Mode</h4>
                                 <div class="price"><span class="free-badge">FREE</span> No API key needed</div>
-                                <div class="desc">Uses Groq's free Llama 3 API. Rate limited but fully functional.</div>
+                                <div class="desc">Uses free open-source models via HuggingFace. No key needed.</div>
                             </div>
-                            <div class="provider-card selected" onclick="selectProvider('openai')">
+                            <div class="provider-card" onclick="selectProvider('openai')">
                                 <h4>OpenAI</h4>
                                 <div class="price">Pay-per-use</div>
                                 <div class="desc">GPT-4o-mini. Best quality responses.</div>
@@ -1151,9 +1172,31 @@
                                 <div class="desc">Claude Sonnet. Great at analysis.</div>
                             </div>
                         </div>
-                        <div id="provider-key-input" style="margin-top:12px;">
+                        <div id="provider-key-input" style="margin-top:12px;display:none;">
                             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;" id="provider-key-label">OpenAI API Key</label>
                             <input id="welcome-api-key" type="password" placeholder="sk-..." style="width:100%;padding:8px 12px;border-radius:0;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:13px;outline:none;">
+                        </div>
+                    </div>
+
+                    <div class="setup-section">
+                        <h3><span class="svg-icon" style="margin-right:6px;color:var(--accent);"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="6.5" r="2.5"/><path d="M7.5 8.5l5 5m-2-1l2 1-1-2"/></svg></span>Quick Setup: Add More AI Providers (Optional)</h3>
+                        <p style="font-size:12px;margin-bottom:10px;">Add up to 3 providers for reliable access. Start with Free Mode — upgrade anytime.</p>
+                        <div id="multi-provider-setup" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">
+                            <div class="provider-setup-option" data-provider="openai">
+                                <div class="pso-name">OpenAI</div>
+                                <div class="pso-status" style="font-size:10px;color:var(--text-muted);">Not set</div>
+                                <button class="pso-btn" onclick="startMultiProviderSetup('openai')" style="font-size:10px;padding:4px 8px;margin-top:4px;">Add</button>
+                            </div>
+                            <div class="provider-setup-option" data-provider="groq">
+                                <div class="pso-name">Groq</div>
+                                <div class="pso-status" style="font-size:10px;color:var(--text-muted);">Not set</div>
+                                <button class="pso-btn" onclick="startMultiProviderSetup('groq')" style="font-size:10px;padding:4px 8px;margin-top:4px;">Add</button>
+                            </div>
+                            <div class="provider-setup-option" data-provider="gemini">
+                                <div class="pso-name">Gemini</div>
+                                <div class="pso-status" style="font-size:10px;color:var(--text-muted);">Not set</div>
+                                <button class="pso-btn" onclick="startMultiProviderSetup('gemini')" style="font-size:10px;padding:4px 8px;margin-top:4px;">Add</button>
+                            </div>
                         </div>
                     </div>
 
@@ -1202,7 +1245,7 @@
                         <div class="chat-avatar"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="10" height="8" rx="1"/><path d="M6 9h0m4 0h0" stroke-linecap="round"/><path d="M8 5V3m-4 4H2m12 0h-2"/></svg></div>
                         <div class="chat-bubble">Welcome! I can help you cross-reference data across all government databases. Try asking me about connections between agencies, data patterns, or specific regulatory questions.
 
-Free mode is available by default — just start chatting! For better results, configure your preferred AI provider using the key icon above.</div>
+Free mode is active — no API key needed, just start chatting. For alternate providers, use the API Key button above.</div>
                     </div>
                 </div>
                 <div class="chat-suggestions" id="chat-suggestions">
@@ -1227,7 +1270,7 @@ Free mode is available by default — just start chatting! For better results, c
         <h3><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:middle;margin-right:4px;"><circle cx="5.5" cy="6.5" r="2.5"/><path d="M7.5 8.5l5 5m-2-1l2 1-1-2"/></svg> AI Provider Settings</h3>
         <label>AI Provider</label>
         <select id="modal-provider-select" onchange="modalProviderChange()" style="width:100%;padding:8px 12px;border-radius:0;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:13px;outline:none;">
-            <option value="free">Free Mode (Groq Llama 3)</option>
+            <option value="free">Free Mode (HuggingFace)</option>
             <option value="openai">OpenAI (GPT-4o-mini)</option>
             <option value="groq">Groq (Llama 3 70B)</option>
             <option value="gemini">Google Gemini (Flash)</option>
@@ -1243,6 +1286,14 @@ Free mode is available by default — just start chatting! For better results, c
             <button class="btn-secondary" onclick="closeApiKeyModal()">Cancel</button>
             <button class="btn-primary" onclick="saveApiKeys()">Save</button>
         </div>
+    </div>
+</div>
+
+<!-- Provider Setup Modal -->
+<div id="provider-setup-modal" class="modal-overlay" style="display:none;">
+    <div class="modal" style="max-width:450px;">
+        <h3 style="margin-bottom:16px;">Set up Provider</h3>
+        <div class="setup-content"></div>
     </div>
 </div>
 
@@ -1318,11 +1369,40 @@ let fetchDateTo = '';
 let chatHistory = [];
 let openaiKey = '';
 let datagovKey = '';
-let aiProvider = 'openai'; // 'openai', 'groq', 'gemini', 'claude', 'free'
+let aiProvider = 'free'; // 'openai', 'groq', 'gemini', 'claude', 'free'
 let groqKey = '';
 let geminiKey = '';
 let claudeKey = '';
 let useDirectApi = false;  // Will be set to true if Flask backend unavailable
+
+// API state tracking - check if providers are configured
+const apiState = {
+    free: { configured: true, name: 'Free Mode', needsKey: false, requiresSetup: false },
+    openai: { configured: false, name: 'OpenAI GPT-4o', needsKey: true, setupUrl: 'https://platform.openai.com/api-keys', setupSteps: ['Visit OpenAI API Keys page', 'Sign in or create account', 'Click "Create new secret key"', 'Copy the key and paste it here'] },
+    groq: { configured: false, name: 'Groq Llama 3', needsKey: true, setupUrl: 'https://console.groq.com/keys', setupSteps: ['Visit Groq Console', 'Sign up with email', 'Go to API Keys section', 'Copy key and paste it here'] },
+    gemini: { configured: false, name: 'Google Gemini', needsKey: true, setupUrl: 'https://aistudio.google.com/app/apikey', setupSteps: ['Visit Google AI Studio', 'Sign in with Google account', 'Click "Create API key"', 'Copy and paste here (no credit card needed)'] },
+    claude: { configured: false, name: 'Anthropic Claude', needsKey: true, setupUrl: 'https://console.anthropic.com/api', setupSteps: ['Visit Anthropic Console', 'Sign in or create account', 'Go to API Keys', 'Create and copy new key'] },
+};
+
+function updateApiState() {
+    if (openaiKey) apiState.openai.configured = true;
+    else apiState.openai.configured = false;
+
+    if (groqKey) apiState.groq.configured = true;
+    else apiState.groq.configured = false;
+
+    if (geminiKey) apiState.gemini.configured = true;
+    else apiState.gemini.configured = false;
+
+    if (claudeKey) apiState.claude.configured = true;
+    else apiState.claude.configured = false;
+}
+
+function isProviderReady(provider) {
+    if (provider === 'free') return true;
+    const state = apiState[provider];
+    return state && state.configured;
+}
 
 // Smart date formatter that handles various API date formats
 function formatDate(dateVal) {
@@ -2288,8 +2368,20 @@ function renderOverview() {
     const authCount = agencies.filter(a => a.auth_required).length;
     const allCats = [...new Set(agencies.flatMap(a => a.data_categories || []))].sort();
 
+    // API provider status badges
+    updateApiState();
+    let providerHtml = `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">`;
+    providerHtml += `<div style="padding:8px 12px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:0;font-size:10px;font-family:var(--mono);"><span style="color:var(--accent);font-weight:600;">AI Chatbot:</span> ${apiState.free.configured ? '✓ Free Mode' : '○ Free Mode'}`
+    + (apiState.openai.configured ? ` + ✓ ${apiState.openai.name.split(' ')[0]}` : '')
+    + (apiState.groq.configured ? ` + ✓ ${apiState.groq.name.split(' ')[0]}` : '')
+    + (apiState.gemini.configured ? ` + ✓ ${apiState.gemini.name.split(' ')[0]}` : '')
+    + (apiState.claude.configured ? ` + ✓ ${apiState.claude.name.split(' ')[0]}` : '')
+    + `</div>`;
+    providerHtml += `<button onclick="showApiKeyModal()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-family:var(--mono);font-size:10px;border-radius:0;cursor:pointer;">+ Add Provider</button>`;
+    providerHtml += `</div>`;
+
     // Consolidated stats box
-    let html = `<div class="stats-box">
+    let html = providerHtml + `<div class="stats-box">
         <div class="stat-item"><span class="stat-value">${agencies.length}</span><span class="stat-label">Agencies</span></div>
         <div class="stat-divider"></div>
         <div class="stat-item"><span class="stat-value">${totalEndpoints}</span><span class="stat-label">Endpoints</span></div>
@@ -2412,7 +2504,7 @@ function showWelcome() { setActivePage('welcome'); }
 function showOverview() { setActivePage('overview'); }
 function showChat() {
     setActivePage('chat');
-    const names = { free: 'Free (Llama 3)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
+    const names = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
     document.getElementById('chat-provider-badge').textContent = `Powered by ${names[aiProvider] || 'AI'}`;
 }
 
@@ -2448,6 +2540,7 @@ function completeSetup() {
     if (dgField && dgField.value.trim()) {
         datagovKey = dgField.value.trim();
     }
+    updateApiState();
     try { sessionStorage.setItem('ogd_setup_done', '1'); } catch(e) {}
     showOverview();
 }
@@ -3132,13 +3225,38 @@ function buildMessages(msg) {
 async function callAI(messages) {
     const provider = aiProvider;
 
-    if (provider === 'free' || provider === 'groq') {
-        // Groq API (free tier uses Llama 3)
-        const key = provider === 'free' ? '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' : groqKey;
+    if (provider === 'free') {
+        // HuggingFace free serverless inference — no API key, OpenAI-compatible
+        const freeModels = [
+            'Qwen/Qwen2.5-72B-Instruct',
+            'mistralai/Mixtral-8x7B-Instruct-v0.1',
+            'meta-llama/Meta-Llama-3-8B-Instruct'
+        ];
+        for (const model of freeModels) {
+            try {
+                const url = `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`;
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model, messages, max_tokens: 1500, temperature: 0.7 })
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.choices?.[0]) return data;
+                }
+                // If 503 (model loading) or 429 (rate limit), try next model
+            } catch (e) { /* try next model */ }
+        }
+        return { error: { message: 'Free models are busy. Try again in a moment, or switch to Groq (free key at groq.com) for reliable access.' } };
+    }
+
+    if (provider === 'groq') {
+        // Groq API with user's own key
+        if (!groqKey) throw new Error('Groq API key is required. Set it in AI Provider Settings.');
         const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
-            headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${key}`},
-            body: JSON.stringify({ model: provider === 'free' ? 'llama-3.3-70b-versatile' : 'llama-3.3-70b-versatile', messages, max_tokens:2000, temperature:0.7 })
+            headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${groqKey}`},
+            body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages, max_tokens:2000, temperature:0.7 })
         });
         return await resp.json();
     }
@@ -3206,9 +3324,10 @@ async function sendChat() {
     const msg = input.value.trim();
     if (!msg) return;
 
-    const key = getActiveKey();
-    if (!key) {
-        showApiKeyModal();
+    // Check if selected provider is ready
+    updateApiState();
+    if (!isProviderReady(aiProvider)) {
+        showProviderSetupModal(aiProvider);
         return;
     }
 
@@ -3318,11 +3437,88 @@ function saveApiKeys() {
     else if (aiProvider === 'gemini') geminiKey = key;
     else if (aiProvider === 'claude') claudeKey = key;
     datagovKey = document.getElementById('datagov-key-input').value.trim();
+    updateApiState();
     closeApiKeyModal();
+}
+
+// Provider setup modal - guides user through getting API keys
+function showProviderSetupModal(provider) {
+    const state = apiState[provider];
+    if (!state || provider === 'free') return; // Free doesn't need setup
+
+    const modal = document.getElementById('provider-setup-modal');
+    const title = modal.querySelector('h3');
+    const content = modal.querySelector('.setup-content');
+
+    title.textContent = `Set up ${state.name}`;
+
+    let html = `<p style="margin-bottom:12px;color:var(--text-secondary);font-size:13px;">Follow these steps to get your API key:</p>`;
+    html += `<ol style="margin:0;padding-left:20px;color:var(--text-secondary);font-size:12px;line-height:1.8;">`;
+    for (const step of state.setupSteps) {
+        html += `<li>${step}</li>`;
+    }
+    html += `</ol>`;
+    html += `<div style="margin-top:16px;padding:12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:0;">
+        <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:6px;text-transform:uppercase;">Paste your API key</label>
+        <input id="setup-key-input" type="password" placeholder="Paste key here..." style="width:100%;padding:8px 12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;border-radius:0;outline:none;">
+    </div>`;
+    html += `<div style="margin-top:12px;display:flex;gap:8px;">
+        <button onclick="saveSetupKey('${provider}')" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg-primary);border:none;border-radius:0;cursor:pointer;font-size:12px;font-weight:500;">Save Key</button>
+        <button onclick="closeProviderSetupModal()" style="flex:1;padding:8px 12px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);border-radius:0;cursor:pointer;font-size:12px;">Cancel</button>
+    </div>`;
+    html += `<a href="${state.setupUrl}" target="_blank" style="display:block;margin-top:12px;text-align:center;color:var(--accent);text-decoration:none;font-size:11px;">Open ${state.name} console →</a>`;
+
+    content.innerHTML = html;
+    modal.style.display = 'flex';
+}
+
+function closeProviderSetupModal() {
+    document.getElementById('provider-setup-modal').style.display = 'none';
+}
+
+function saveSetupKey(provider) {
+    const key = document.getElementById('setup-key-input').value.trim();
+    if (!key) {
+        alert('Please paste your API key');
+        return;
+    }
+    if (provider === 'openai') openaiKey = key;
+    else if (provider === 'groq') groqKey = key;
+    else if (provider === 'gemini') geminiKey = key;
+    else if (provider === 'claude') claudeKey = key;
+
+    updateApiState();
+    closeProviderSetupModal();
+    appendChat('assistant', `✓ ${apiState[provider].name} is now configured. Try asking your question again!`);
+}
+
+// Multi-provider setup from welcome page
+function startMultiProviderSetup(provider) {
+    showProviderSetupModal(provider);
+}
+
+// Update welcome page provider status badges
+function refreshMultiProviderStatus() {
+    updateApiState();
+    document.querySelectorAll('.provider-setup-option').forEach(el => {
+        const prov = el.dataset.provider;
+        const status = el.querySelector('.pso-status');
+        const btn = el.querySelector('.pso-btn');
+        if (apiState[prov]?.configured) {
+            status.textContent = '✓ Added';
+            status.style.color = 'var(--success)';
+            btn.textContent = 'Update';
+        } else {
+            status.textContent = 'Not set';
+            status.style.color = 'var(--text-muted)';
+            btn.textContent = 'Add';
+        }
+    });
 }
 
 // Start
 init();
+refreshMultiProviderStatus();
 </script>
 </body>
 </html>
