@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenGovDash - Government Data Dashboard</title>
+    <style>
+        :root {
+            --bg-primary: #0f1117;
+            --bg-secondary: #1a1d27;
+            --bg-card: #222536;
+            --bg-hover: #2a2e42;
+            --accent: #4f8cff;
+            --accent-dim: #3a6fd4;
+            --text-primary: #e8eaed;
+            --text-secondary: #9aa0a6;
+            --text-muted: #6b7280;
+            --border: #2d3148;
+            --success: #34d399;
+            --warning: #fbbf24;
+            --danger: #f87171;
+            --sidebar-width: 260px;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+        /* Layout */
+        .app { display: flex; height: 100vh; }
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .sidebar-header h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: -0.5px;
+        }
+        .sidebar-header p {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .sidebar-nav {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        .sidebar-nav::-webkit-scrollbar { width: 4px; }
+        .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .nav-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            padding: 12px 8px 4px;
+        }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-secondary);
+            transition: all 0.15s;
+            margin-bottom: 1px;
+        }
+        .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .nav-item.active { background: var(--accent); color: #fff; }
+        .nav-item .badge {
+            margin-left: auto;
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            background: var(--bg-primary);
+            color: var(--text-muted);
+        }
+        .nav-item.active .badge { background: rgba(255,255,255,0.2); color: #fff; }
+        .nav-icon { width: 18px; text-align: center; font-size: 14px; }
+
+        /* Main content */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .topbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-secondary);
+        }
+        .topbar h2 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .topbar .source-badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: var(--bg-card);
+            color: var(--text-muted);
+        }
+        .sub-tabs {
+            display: flex;
+            gap: 4px;
+            margin-left: auto;
+            flex-wrap: wrap;
+        }
+        .sub-tab {
+            font-size: 12px;
+            padding: 5px 12px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .sub-tab:hover { border-color: var(--accent); color: var(--accent); }
+        .sub-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        /* Search bar */
+        .search-bar {
+            display: flex;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+        }
+        .search-bar input {
+            flex: 1;
+            padding: 8px 14px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+        }
+        .search-bar input:focus { border-color: var(--accent); }
+        .search-bar button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .search-bar button:hover { background: var(--accent-dim); }
+
+        /* Content area */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .content::-webkit-scrollbar { width: 6px; }
+        .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: var(--text-muted);
+        }
+        .spinner {
+            width: 24px; height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Data table */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .data-table th {
+            text-align: left;
+            padding: 10px 12px;
+            background: var(--bg-secondary);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .data-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .data-table tr:hover td { background: var(--bg-hover); }
+        .data-table a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .data-table a:hover { text-decoration: underline; }
+
+        /* Cards grid */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 12px;
+        }
+        .data-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+            transition: border-color 0.15s;
+        }
+        .data-card:hover { border-color: var(--accent); }
+        .data-card h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text-primary);
+        }
+        .data-card p {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+        .data-card .meta {
+            display: flex;
+            gap: 12px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .data-card .meta a { color: var(--accent); }
+
+        /* Stats cards */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-card .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .stat-card .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* View toggle */
+        .view-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-primary);
+        }
+        .view-btn {
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .view-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .result-count { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+
+        /* Chatbot */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .chat-message {
+            margin-bottom: 16px;
+            display: flex;
+            gap: 10px;
+        }
+        .chat-message.user { justify-content: flex-end; }
+        .chat-avatar {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        .chat-message.assistant .chat-avatar { background: var(--accent); }
+        .chat-message.user .chat-avatar { background: #6366f1; }
+        .chat-bubble {
+            max-width: 70%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .chat-message.user .chat-bubble {
+            background: #6366f1;
+            color: #fff;
+            border-bottom-right-radius: 4px;
+        }
+        .chat-message.assistant .chat-bubble {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border-bottom-left-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .chat-input-area {
+            padding: 12px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+        }
+        .chat-input-area input {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+        .chat-input-area input:focus { border-color: var(--accent); }
+        .chat-input-area button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        /* API Key modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            width: 420px;
+            max-width: 90%;
+        }
+        .modal h3 { margin-bottom: 16px; font-size: 16px; }
+        .modal label {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: block;
+            margin-bottom: 4px;
+            margin-top: 12px;
+        }
+        .modal input {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+        }
+        .modal .btn-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 20px;
+            justify-content: flex-end;
+        }
+        .modal button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .modal .btn-primary { background: var(--accent); color: #fff; }
+        .modal .btn-secondary { background: var(--bg-card); color: var(--text-secondary); }
+
+        /* Error */
+        .error-msg {
+            background: rgba(248,113,113,0.1);
+            border: 1px solid rgba(248,113,113,0.3);
+            border-radius: 8px;
+            padding: 14px;
+            color: var(--danger);
+            font-size: 13px;
+        }
+
+        /* Overview page */
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+        }
+        .agency-overview-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .agency-overview-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+        .agency-overview-card h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+        .agency-overview-card .acronym {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .agency-overview-card p {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+        .agency-overview-card .tags {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: var(--bg-primary);
+            color: var(--text-muted);
+        }
+        /* Chat suggestions */
+        .chat-suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 10px 20px;
+        }
+        .suggestion-chip {
+            padding: 6px 12px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .suggestion-chip:hover { border-color: var(--accent); color: var(--accent); }
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>OpenGovDash</h1>
+            <p>Government Data Explorer</p>
+        </div>
+        <div class="sidebar-nav" id="sidebar-nav">
+            <div class="nav-section-title">Navigation</div>
+            <div class="nav-item active" onclick="showOverview()" data-page="overview">
+                <span class="nav-icon">&#127968;</span> Overview
+            </div>
+            <div class="nav-item" onclick="showChat()" data-page="chat">
+                <span class="nav-icon">&#129302;</span> AI Chatbot
+                <span class="badge">Cross-Ref</span>
+            </div>
+            <div class="nav-section-title">Agencies</div>
+            <div id="agency-nav-list">
+                <div class="loading"><div class="spinner"></div>Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+        <!-- Overview Page -->
+        <div id="page-overview">
+            <div class="topbar">
+                <h2>All Government Databases</h2>
+                <span class="source-badge" id="agency-count">Loading...</span>
+            </div>
+            <div class="content" id="overview-content">
+                <div class="loading"><div class="spinner"></div>Loading agencies...</div>
+            </div>
+        </div>
+
+        <!-- Agency Data Page -->
+        <div id="page-agency" style="display:none;flex-direction:column;height:100%;">
+            <div class="topbar">
+                <h2 id="agency-title">Agency</h2>
+                <span class="source-badge" id="agency-source"></span>
+                <div class="sub-tabs" id="sub-tabs"></div>
+            </div>
+            <div id="search-bar-container"></div>
+            <div class="view-controls">
+                <button class="view-btn active" onclick="setView('cards')" id="btn-cards">Cards</button>
+                <button class="view-btn" onclick="setView('table')" id="btn-table">Table</button>
+                <span class="result-count" id="result-count"></span>
+            </div>
+            <div class="content" id="agency-content">
+                <div class="loading"><div class="spinner"></div>Loading data...</div>
+            </div>
+        </div>
+
+        <!-- Chat Page -->
+        <div id="page-chat" style="display:none;flex-direction:column;height:100%;">
+            <div class="topbar">
+                <h2>AI Cross-Reference Chatbot</h2>
+                <span class="source-badge">Powered by OpenAI</span>
+                <button onclick="showApiKeyModal()" style="margin-left:auto;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);cursor:pointer;font-size:12px;">&#128273; API Key</button>
+            </div>
+            <div class="chat-container">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="chat-message assistant">
+                        <div class="chat-avatar">&#129302;</div>
+                        <div class="chat-bubble">Welcome! I can help you cross-reference data across all government databases. Try asking me about connections between agencies, data patterns, or specific regulatory questions.
+
+To get started, please set your OpenAI API key using the key icon above.</div>
+                    </div>
+                </div>
+                <div class="chat-suggestions" id="chat-suggestions">
+                    <button class="suggestion-chip" onclick="sendSuggestion(this)">What SEC filings relate to FDA drug approvals?</button>
+                    <button class="suggestion-chip" onclick="sendSuggestion(this)">Cross-reference FCC devices with FDA 510(k) data</button>
+                    <button class="suggestion-chip" onclick="sendSuggestion(this)">How do NIST CVEs connect to FTC enforcement?</button>
+                    <button class="suggestion-chip" onclick="sendSuggestion(this)">Show relationships between Treasury data and FDIC banks</button>
+                    <button class="suggestion-chip" onclick="sendSuggestion(this)">Create a dashboard of BLS employment vs Census demographics</button>
+                </div>
+                <div class="chat-input-area">
+                    <input id="chat-input" placeholder="Ask about cross-referencing government data..." onkeydown="if(event.key==='Enter')sendChat()">
+                    <button onclick="sendChat()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- API Key Modal -->
+<div id="api-key-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+        <h3>&#128273; API Key Settings</h3>
+        <label>OpenAI API Key (for chatbot)</label>
+        <input id="openai-key-input" type="password" placeholder="sk-...">
+        <label>data.gov API Key (optional, for enhanced access)</label>
+        <input id="datagov-key-input" type="text" placeholder="Your data.gov API key">
+        <div class="btn-row">
+            <button class="btn-secondary" onclick="closeApiKeyModal()">Cancel</button>
+            <button class="btn-primary" onclick="saveApiKeys()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const API_BASE = '';  // Same origin for Flask backend
+let agencies = [];
+let currentAgency = null;
+let currentSubSection = '';
+let currentData = [];
+let currentView = 'cards';
+let chatHistory = [];
+let openaiKey = '';
+let datagovKey = '';
+let useDirectApi = false;  // Will be set to true if Flask backend unavailable
+
+// ========== CLIENT-SIDE DIRECT API LAYER ==========
+// These functions call government APIs directly from the browser
+const DIRECT_API = {
+    sec: {
+        fetch: async (sub, query) => {
+            if (query) {
+                const r = await fetch(`https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(query)}%22&from=0&size=20`);
+                const d = await r.json();
+                return (d.hits?.hits || []).map(h => ({
+                    title: h._source?.entity_name || '',
+                    description: h._source?.file_description || '',
+                    date: h._source?.file_date || '',
+                    link: `https://www.sec.gov/cgi-bin/browse-edgar?company=${query}&CIK=&type=&dateb=&owner=include&count=40&search_text=&action=getcompany`,
+                    form_type: h._source?.form_type || ''
+                }));
+            }
+            const ft = sub || '8-K';
+            const r = await fetch(`https://efts.sec.gov/LATEST/search-index?q=%22${ft}%22&forms=${ft}&from=0&size=20`);
+            const d = await r.json();
+            return (d.hits?.hits || []).map(h => ({
+                title: (h._source?.display_names || [''])[0] || h._source?.entity_name || '',
+                description: `${ft} filing - ${h._source?.file_description || ''}`,
+                date: h._source?.file_date || '',
+                link: h._source?.entity_id ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${h._source.entity_id}` : '',
+                form_type: h._source?.form_type || ft
+            }));
+        }
+    },
+    fda: {
+        fetch: async (sub, query) => {
+            const endpoints = {
+                drug_events: 'drug/event.json',
+                drug_recalls: 'drug/enforcement.json',
+                device_510k: 'device/510k.json',
+                device_recalls: 'device/enforcement.json',
+                food_recalls: 'food/enforcement.json'
+            };
+            const ep = endpoints[sub] || 'drug/event.json';
+            let url = `https://api.fda.gov/${ep}?limit=20`;
+            if (query) {
+                if (sub === 'drug_events') url += `&search=patient.drug.medicinalproduct:"${query}"`;
+                else if (sub === 'device_510k') url += `&search=device_name:"${query}"`;
+                else url += `&search="${query}"`;
+            }
+            const r = await fetch(url);
+            const d = await r.json();
+            const results = d.results || [];
+            if (sub === 'device_510k') {
+                return results.map(x => ({
+                    title: x.device_name || '', description: `Applicant: ${x.applicant || ''} | Code: ${x.product_code || ''}`,
+                    date: x.decision_date || '', link: `https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpmn/pmn.cfm?ID=${x.k_number || ''}`,
+                    k_number: x.k_number || '', decision: x.decision_description || ''
+                }));
+            }
+            if (sub === 'drug_events') {
+                return results.map(x => {
+                    const drugs = x.patient?.drug || [{}];
+                    const reactions = x.patient?.reaction || [{}];
+                    return {
+                        title: drugs[0]?.medicinalproduct || 'Unknown',
+                        description: reactions.map(r => r.reactionmeddrapt).filter(Boolean).slice(0,3).join(', '),
+                        date: x.receivedate || '', serious: x.serious || '',
+                        link: `https://api.fda.gov/drug/event.json?search=safetyreportid:${x.safetyreportid || ''}`
+                    };
+                });
+            }
+            return results.map(x => ({
+                title: (x.product_description || '').substring(0, 100),
+                description: x.reason_for_recall || '',
+                date: x.report_date || '',
+                link: 'https://www.fda.gov/safety/recalls-market-withdrawals-safety-alerts',
+                classification: x.classification || '', recalling_firm: x.recalling_firm || ''
+            }));
+        }
+    },
+    treasury: {
+        fetch: async (sub) => {
+            const endpoints = {
+                national_debt: 'v2/accounting/od/debt_to_penny',
+                daily_statements: 'v1/accounting/dts/dts_table_1',
+                interest_rates: 'v2/accounting/od/avg_interest_rates',
+                exchange_rates: 'v1/accounting/od/rates_of_exchange'
+            };
+            const ep = endpoints[sub] || endpoints.national_debt;
+            const r = await fetch(`https://api.fiscaldata.treasury.gov/services/api/fiscal_service/${ep}?page[size]=20&sort=-record_date`);
+            const d = await r.json();
+            const data = d.data || [];
+            if (sub === 'national_debt') return data.map(x => ({
+                title: `Total Public Debt: $${x.tot_pub_debt_out_amt || 'N/A'}`,
+                description: `Debt held by public: $${x.debt_held_public_amt || 'N/A'} | Intragovt: $${x.intragov_hold_amt || 'N/A'}`,
+                date: x.record_date || '', link: 'https://fiscaldata.treasury.gov/datasets/debt-to-the-penny/'
+            }));
+            if (sub === 'interest_rates') return data.map(x => ({
+                title: x.security_desc || '', description: `Avg Interest Rate: ${x.avg_interest_rate_amt || ''}%`,
+                date: x.record_date || '', link: 'https://fiscaldata.treasury.gov/datasets/average-interest-rates-treasury-securities/'
+            }));
+            if (sub === 'exchange_rates') return data.map(x => ({
+                title: `${x.country || ''} (${x.currency || ''})`,
+                description: `Exchange Rate: ${x.exchange_rate || ''} per USD`,
+                date: x.record_date || '', link: 'https://fiscaldata.treasury.gov/datasets/treasury-reporting-rates-exchange/'
+            }));
+            return data.map(x => ({
+                title: `${x.account_type || ''} - ${x.classification_desc || ''}`,
+                description: `Today: $${x.today_amt || 'N/A'} | MTD: $${x.mtd_amt || 'N/A'}`,
+                date: x.record_date || '', link: 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/'
+            }));
+        }
+    },
+    noaa: {
+        fetch: async (sub) => {
+            if (sub === 'forecast') {
+                const r = await fetch('https://api.weather.gov/points/38.8894,-77.0352', {headers:{'User-Agent':'OpenGovDash','Accept':'application/geo+json'}});
+                const d = await r.json();
+                const fr = await fetch(d.properties.forecast, {headers:{'User-Agent':'OpenGovDash','Accept':'application/geo+json'}});
+                const fd = await fr.json();
+                return (fd.properties?.periods || []).map(p => ({
+                    title: p.name || '', description: p.detailedForecast || '', date: p.startTime || '',
+                    link: 'https://weather.gov', temperature: `${p.temperature}°${p.temperatureUnit}`
+                }));
+            }
+            const r = await fetch('https://api.weather.gov/alerts/active', {headers:{'User-Agent':'OpenGovDash','Accept':'application/geo+json'}});
+            const d = await r.json();
+            return (d.features || []).slice(0,20).map(f => ({
+                title: f.properties?.headline || '', description: (f.properties?.description || '').substring(0,300),
+                date: f.properties?.onset || '', link: f.properties?.uri || 'https://alerts.weather.gov',
+                severity: f.properties?.severity || '', area: f.properties?.areaDesc || ''
+            }));
+        }
+    },
+    usgs: {
+        fetch: async (sub) => {
+            if (sub === 'water') return [{title:'Water monitoring requires backend proxy', description:'USGS Water Services API may have CORS restrictions', date:'', link:'https://waterservices.usgs.gov/'}];
+            const r = await fetch('https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=20&minmagnitude=2.5&orderby=time');
+            const d = await r.json();
+            return (d.features || []).map(f => ({
+                title: f.properties?.title || '', description: `Magnitude: ${f.properties?.mag} | Depth: ${f.geometry?.coordinates?.[2]}km`,
+                date: new Date(f.properties?.time).toISOString(), link: f.properties?.url || '',
+                magnitude: f.properties?.mag, tsunami: f.properties?.tsunami
+            }));
+        }
+    },
+    nasa: {
+        fetch: async (sub) => {
+            const key = datagovKey || 'DEMO_KEY';
+            if (sub === 'neo') {
+                const r = await fetch(`https://api.nasa.gov/neo/rest/v1/neo/browse?api_key=${key}`);
+                const d = await r.json();
+                return (d.near_earth_objects || []).slice(0,20).map(n => ({
+                    title: n.name || '', description: `Magnitude: ${n.absolute_magnitude_h} | Hazardous: ${n.is_potentially_hazardous_asteroid}`,
+                    date: n.orbital_data?.first_observation_date || '', link: n.nasa_jpl_url || ''
+                }));
+            }
+            if (sub === 'mars') {
+                const r = await fetch(`https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/latest_photos?api_key=${key}`);
+                const d = await r.json();
+                return (d.latest_photos || []).slice(0,20).map(p => ({
+                    title: `Sol ${p.sol} - ${p.camera?.full_name || ''}`, description: `Rover: ${p.rover?.name || ''} | Camera: ${p.camera?.name || ''}`,
+                    date: p.earth_date || '', link: p.img_src || ''
+                }));
+            }
+            const r = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${key}&count=10`);
+            const d = await r.json();
+            return (Array.isArray(d) ? d : [d]).map(x => ({
+                title: x.title || '', description: (x.explanation || '').substring(0,300),
+                date: x.date || '', link: x.hdurl || x.url || ''
+            }));
+        }
+    },
+    bls: {
+        fetch: async (sub) => {
+            const seriesMap = { unemployment:'LNS14000000', cpi:'CUUR0000SA0', employment:'CES0000000001', avg_hourly_earnings:'CES0500000003' };
+            const names = { unemployment:'Unemployment Rate', cpi:'Consumer Price Index', employment:'Total Nonfarm Employment', avg_hourly_earnings:'Avg Hourly Earnings' };
+            const sid = seriesMap[sub] || seriesMap.unemployment;
+            const name = names[sub] || names.unemployment;
+            const year = new Date().getFullYear();
+            const r = await fetch('https://api.bls.gov/publicAPI/v2/timeseries/data/', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({seriesid:[sid], startyear:String(year-3), endyear:String(year)})
+            });
+            const d = await r.json();
+            const series = d.Results?.series?.[0]?.data || [];
+            return series.map(x => ({
+                title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
+                date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
+            }));
+        }
+    },
+    census: {
+        fetch: async (sub) => {
+            if (sub === 'income') {
+                const r = await fetch('https://api.census.gov/data/2022/acs/acs1?get=NAME,B19013_001E&for=state:*');
+                const d = await r.json();
+                return d.slice(1).sort((a,b)=>parseInt(b[1]||0)-parseInt(a[1]||0)).slice(0,20).map(x => ({
+                    title: x[0], description: x[1] && x[1]!=='-666666666' ? `Median Household Income: $${parseInt(x[1]).toLocaleString()}` : 'Data not available',
+                    date: '2022 ACS', link: 'https://data.census.gov/'
+                }));
+            }
+            const r = await fetch('https://api.census.gov/data/2022/acs/acs1?get=NAME,B01001_001E&for=state:*');
+            const d = await r.json();
+            return d.slice(1).sort((a,b)=>parseInt(b[1]||0)-parseInt(a[1]||0)).slice(0,20).map(x => ({
+                title: x[0], description: `Population (ACS 2022): ${parseInt(x[1]).toLocaleString()}`,
+                date: '2022', link: 'https://data.census.gov/', population: x[1]
+            }));
+        }
+    },
+    fdic: {
+        fetch: async (sub) => {
+            if (sub === 'failures') {
+                const r = await fetch('https://banks.data.fdic.gov/api/failures?limit=20&sort_by=FAILDATE&sort_order=DESC');
+                const d = await r.json();
+                return (d.data || []).map(x => ({
+                    title: x.data?.NAME || '', description: `${x.data?.CITY || ''}, ${x.data?.STATE || ''} | Deposits: $${(x.data?.TOTALDEPOSITS||0).toLocaleString()}`,
+                    date: x.data?.FAILDATE || '', link: 'https://www.fdic.gov/resources/resolutions/bank-failures/'
+                }));
+            }
+            const r = await fetch('https://banks.data.fdic.gov/api/financials?limit=20&sort_by=REPDTE&sort_order=DESC');
+            const d = await r.json();
+            return (d.data || []).map(x => ({
+                title: x.data?.REPNM || x.data?.INSTNAME || '',
+                description: `Assets: $${(x.data?.ASSET||0).toLocaleString()}K | Deposits: $${(x.data?.DEP||0).toLocaleString()}K`,
+                date: x.data?.REPDTE || '', link: 'https://www.fdic.gov/'
+            }));
+        }
+    },
+    nih: {
+        fetch: async (sub, query) => {
+            if (sub === 'pubmed') {
+                const q = query || 'health';
+                const r = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${q}&retmax=10&retmode=json&sort=date`);
+                const d = await r.json();
+                const ids = d.esearchresult?.idlist || [];
+                if (ids.length) {
+                    const r2 = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${ids.join(',')}&retmode=json`);
+                    const d2 = await r2.json();
+                    return ids.filter(id => d2.result?.[id]?.title).map(id => {
+                        const a = d2.result[id];
+                        return { title: a.title, description: `Authors: ${(a.authors||[]).slice(0,3).map(x=>x.name).join(', ')} | Journal: ${a.source||''}`,
+                            date: a.pubdate || '', link: `https://pubmed.ncbi.nlm.nih.gov/${id}/` };
+                    });
+                }
+                return [];
+            }
+            let url = `https://clinicaltrials.gov/api/v2/studies?pageSize=20&sort=LastUpdatePostDate:desc`;
+            if (query) url += `&query.term=${encodeURIComponent(query)}`;
+            const r = await fetch(url);
+            const d = await r.json();
+            return (d.studies || []).map(s => ({
+                title: s.protocolSection?.identificationModule?.briefTitle || '',
+                description: (s.protocolSection?.descriptionModule?.briefSummary || '').substring(0,300),
+                date: s.protocolSection?.statusModule?.lastUpdateSubmitDate || '',
+                link: `https://clinicaltrials.gov/study/${s.protocolSection?.identificationModule?.nctId || ''}`,
+                status: s.protocolSection?.statusModule?.overallStatus || ''
+            }));
+        }
+    },
+    fec: {
+        fetch: async (sub) => {
+            const key = datagovKey || 'DEMO_KEY';
+            if (sub === 'filings') {
+                const r = await fetch(`https://api.open.fec.gov/v1/filings/?api_key=${key}&per_page=20&sort=-receipt_date`);
+                const d = await r.json();
+                return (d.results || []).map(x => ({
+                    title: x.committee_name || '', description: `Form: ${x.form_type||''} | Receipts: $${(x.total_receipts||0).toLocaleString()}`,
+                    date: x.receipt_date || '', link: `https://www.fec.gov/data/committee/${x.committee_id||''}/`
+                }));
+            }
+            const r = await fetch(`https://api.open.fec.gov/v1/candidates/?api_key=${key}&sort=-receipts&per_page=20&election_year=2024`);
+            const d = await r.json();
+            return (d.results || []).map(x => ({
+                title: x.name || '', description: `Party: ${x.party_full||''} | Office: ${x.office_full||''} | State: ${x.state||''}`,
+                date: `Cycle: ${(x.election_years||[''])[0]}`, link: `https://www.fec.gov/data/candidate/${x.candidate_id||''}/`
+            }));
+        }
+    },
+    loc: {
+        fetch: async (sub, query) => {
+            const q = query || 'government';
+            const r = await fetch(`https://www.loc.gov/search/?q=${encodeURIComponent(q)}&fo=json&c=20`);
+            const d = await r.json();
+            return (d.results || []).map(x => ({
+                title: x.title || (Array.isArray(x.description) ? x.description[0] : ''),
+                description: (Array.isArray(x.description) ? x.description[0] : (x.description || '')).substring(0,300),
+                date: x.date || '', link: x.url || x.id || ''
+            }));
+        }
+    },
+    usaspending: {
+        fetch: async (sub, query) => {
+            if (query) {
+                const r = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                        filters:{keywords:[query],time_period:[{start_date:"2024-01-01",end_date:"2026-12-31"}]},
+                        fields:["Award ID","Recipient Name","Award Amount","Description","Start Date","Awarding Agency"],
+                        limit:20, page:1, sort:"Award Amount", order:"desc"
+                    })
+                });
+                const d = await r.json();
+                return (d.results||[]).map(x => ({
+                    title: x['Recipient Name']||'Unknown', description: `Award: ${x['Award ID']||''} - ${(x.Description||'').substring(0,150)}`,
+                    date: x['Start Date']||'', link: `https://www.usaspending.gov/award/${x.internal_id||''}`, amount: x['Award Amount']
+                }));
+            }
+            const r = await fetch('https://api.usaspending.gov/api/v2/references/toptier_agencies/');
+            const d = await r.json();
+            return (d.results||[]).slice(0,20).map(x => ({
+                title: x.agency_name||'', description: `Budget: $${(x.budget_authority_amount||0).toLocaleString()} | Obligated: $${(x.obligated_amount||0).toLocaleString()}`,
+                date: '', link: `https://www.usaspending.gov/agency/${x.agency_slug||''}`, abbreviation: x.abbreviation||''
+            }));
+        }
+    },
+    nist: {
+        fetch: async (sub, query) => {
+            let url = 'https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=20';
+            if (query) url += `&keywordSearch=${encodeURIComponent(query)}`;
+            const r = await fetch(url);
+            const d = await r.json();
+            return (d.vulnerabilities||[]).map(v => {
+                const c = v.cve||{};
+                const desc = (c.descriptions||[]).find(d=>d.lang==='en')?.value || '';
+                let cvss = '';
+                if (c.metrics?.cvssMetricV31?.[0]) cvss = c.metrics.cvssMetricV31[0].cvssData?.baseScore||'';
+                return { title: c.id||'', description: desc.substring(0,300), date: c.published||'',
+                    link: `https://nvd.nist.gov/vuln/detail/${c.id||''}`, cvss_score: cvss };
+            });
+        }
+    }
+};
+
+// Fallback agency metadata for client-side mode
+const CLIENT_AGENCIES = [
+    {id:'sec',name:'Securities and Exchange Commission',acronym:'SEC',description:'Corporate filings, financial disclosures, and securities data from EDGAR',
+     base_url:'https://data.sec.gov',auth_required:false,has_search:true,search_placeholder:'Search company name or CIK...',
+     data_categories:['Financial','Corporate','Securities','Compliance'],
+     sub_sections:[{id:'8-K',name:'8-K Current Reports'},{id:'10-K',name:'10-K Annual Reports'},{id:'10-Q',name:'10-Q Quarterly'},{id:'13F',name:'13F Holdings'},{id:'S-1',name:'S-1 IPO Filings'}],
+     endpoints:['8-K','10-K','10-Q','13F','S-1','Company Search']},
+    {id:'fda',name:'Food and Drug Administration',acronym:'FDA',description:'Drug adverse events, recalls, 510(k) device clearances, and food safety data',
+     base_url:'https://api.fda.gov',auth_required:false,has_search:true,search_placeholder:'Search drug name, device, or keyword...',
+     data_categories:['Health','Safety','Medical Devices','Pharmaceuticals'],
+     sub_sections:[{id:'drug_events',name:'Drug Adverse Events'},{id:'drug_recalls',name:'Drug Recalls'},{id:'device_510k',name:'Device 510(k) Clearances'},{id:'device_recalls',name:'Device Recalls'},{id:'food_recalls',name:'Food Recalls'}],
+     endpoints:['Drug Events','Drug Recalls','510(k)','Device Recalls','Food Recalls']},
+    {id:'treasury',name:'US Treasury',acronym:'Treasury',description:'Federal debt, daily treasury statements, interest rates, and exchange rates',
+     base_url:'https://api.fiscaldata.treasury.gov',auth_required:false,has_search:false,
+     data_categories:['Financial','Economic','Fiscal Policy'],
+     sub_sections:[{id:'national_debt',name:'National Debt'},{id:'daily_statements',name:'Daily Treasury Statements'},{id:'interest_rates',name:'Average Interest Rates'},{id:'exchange_rates',name:'Exchange Rates'}],
+     endpoints:['National Debt','Daily Statements','Interest Rates','Exchange Rates']},
+    {id:'usaspending',name:'USAspending.gov',acronym:'USAspending',description:'Federal spending, contracts, grants, and budget data across all agencies',
+     base_url:'https://api.usaspending.gov',auth_required:false,has_search:true,search_placeholder:'Search contracts, grants, recipients...',
+     data_categories:['Financial','Contracts','Grants','Federal Spending'],
+     sub_sections:[{id:'top_agencies',name:'Top Agencies by Budget'},{id:'federal_accounts',name:'Federal Accounts'}],
+     endpoints:['Top Agencies','Federal Accounts','Award Search']},
+    {id:'noaa',name:'National Oceanic and Atmospheric Administration',acronym:'NOAA',description:'Weather alerts, forecasts, and climate data from the National Weather Service',
+     base_url:'https://api.weather.gov',auth_required:false,has_search:false,
+     data_categories:['Weather','Climate','Environmental'],
+     sub_sections:[{id:'alerts',name:'Active Weather Alerts'},{id:'forecast',name:'Weather Forecast (DC)'}],
+     endpoints:['Weather Alerts','Forecast']},
+    {id:'usgs',name:'United States Geological Survey',acronym:'USGS',description:'Earthquake data, water monitoring, and geological information',
+     base_url:'https://earthquake.usgs.gov',auth_required:false,has_search:false,
+     data_categories:['Geological','Environmental','Natural Hazards'],
+     sub_sections:[{id:'earthquakes',name:'Recent Earthquakes'},{id:'water',name:'Water Monitoring'}],
+     endpoints:['Earthquakes','Water Data']},
+    {id:'nasa',name:'National Aeronautics and Space Administration',acronym:'NASA',description:'Astronomy pictures, near-earth objects, Mars rover photos',
+     base_url:'https://api.nasa.gov',auth_required:false,has_search:false,
+     data_categories:['Space','Science','Imagery'],
+     sub_sections:[{id:'apod',name:'Astronomy Picture of the Day'},{id:'neo',name:'Near Earth Objects'},{id:'mars',name:'Mars Rover Photos'}],
+     endpoints:['APOD','NEO','Mars Photos']},
+    {id:'bls',name:'Bureau of Labor Statistics',acronym:'BLS',description:'Employment, unemployment, CPI, wages, and labor market data',
+     base_url:'https://api.bls.gov',auth_required:false,has_search:false,
+     data_categories:['Economic','Employment','Labor'],
+     sub_sections:[{id:'unemployment',name:'Unemployment Rate'},{id:'cpi',name:'Consumer Price Index'},{id:'employment',name:'Total Nonfarm Employment'},{id:'avg_hourly_earnings',name:'Average Hourly Earnings'}],
+     endpoints:['Unemployment','CPI','Employment','Wages']},
+    {id:'census',name:'US Census Bureau',acronym:'Census',description:'Population estimates, demographics, and income data',
+     base_url:'https://api.census.gov',auth_required:false,has_search:false,
+     data_categories:['Demographics','Economic','Population'],
+     sub_sections:[{id:'population',name:'Population by State'},{id:'income',name:'Median Income by State'}],
+     endpoints:['Population','Income']},
+    {id:'doj',name:'Department of Justice',acronym:'DOJ',description:'Press releases, news, speeches, and blog posts from the DOJ',
+     base_url:'https://www.justice.gov/api/v1',auth_required:false,has_search:false,
+     data_categories:['Legal','Law Enforcement','Policy'],
+     sub_sections:[{id:'press_releases',name:'Press Releases'},{id:'blog_posts',name:'Blog Posts'},{id:'speeches',name:'Speeches'},{id:'news',name:'News'}],
+     endpoints:['Press Releases','Blog Posts','Speeches','News']},
+    {id:'fcc',name:'Federal Communications Commission',acronym:'FCC',description:'Broadband data, spectrum licenses, and consumer complaints',
+     base_url:'https://opendata.fcc.gov',auth_required:false,has_search:false,
+     data_categories:['Communications','Broadband','Spectrum'],
+     sub_sections:[{id:'broadband',name:'Broadband Data'},{id:'spectrum',name:'Spectrum Licenses'},{id:'complaints',name:'Consumer Complaints'}],
+     endpoints:['Broadband','Spectrum','Complaints']},
+    {id:'ftc',name:'Federal Trade Commission',acronym:'FTC',description:'Consumer protection, antitrust enforcement, press releases and cases',
+     base_url:'https://www.ftc.gov/api',auth_required:false,has_search:false,
+     data_categories:['Consumer Protection','Antitrust','Privacy'],
+     sub_sections:[{id:'press_releases',name:'Press Releases'},{id:'cases',name:'Enforcement Cases'}],
+     endpoints:['Press Releases','Cases']},
+    {id:'nist',name:'National Institute of Standards and Technology',acronym:'NIST',description:'National Vulnerability Database - CVE records and cybersecurity data',
+     base_url:'https://services.nvd.nist.gov',auth_required:false,has_search:true,search_placeholder:'Search CVEs by keyword...',
+     data_categories:['Cybersecurity','Vulnerabilities','Compliance'],
+     sub_sections:[{id:'recent_cves',name:'Recent Vulnerabilities'}],
+     endpoints:['Recent CVEs','CVE Search']},
+    {id:'fec',name:'Federal Election Commission',acronym:'FEC',description:'Campaign finance data, candidate filings, and political committee information',
+     base_url:'https://api.open.fec.gov',auth_required:false,has_search:false,
+     data_categories:['Elections','Campaign Finance','Political'],
+     sub_sections:[{id:'candidates',name:'Candidates (2024)'},{id:'filings',name:'Committee Filings'}],
+     endpoints:['Candidates','Filings']},
+    {id:'fdic',name:'Federal Deposit Insurance Corporation',acronym:'FDIC',description:'Bank financial data, institution information, and bank failure records',
+     base_url:'https://banks.data.fdic.gov/api',auth_required:false,has_search:false,
+     data_categories:['Financial','Banking','Regulatory'],
+     sub_sections:[{id:'institutions',name:'Financial Institutions'},{id:'failures',name:'Bank Failures'}],
+     endpoints:['Institutions','Failures']},
+    {id:'nih',name:'National Institutes of Health',acronym:'NIH',description:'Clinical trials, PubMed research articles, and biomedical data',
+     base_url:'https://clinicaltrials.gov/api',auth_required:false,has_search:true,search_placeholder:'Search clinical trials or research...',
+     data_categories:['Health','Medical Research','Clinical Trials'],
+     sub_sections:[{id:'clinical_trials',name:'Clinical Trials'},{id:'pubmed',name:'PubMed Research'}],
+     endpoints:['Clinical Trials','PubMed']},
+    {id:'loc',name:'Library of Congress',acronym:'LOC',description:'Digital collections, historical records, and the national library catalog',
+     base_url:'https://www.loc.gov',auth_required:false,has_search:true,search_placeholder:'Search Library of Congress collections...',
+     data_categories:['Historical','Cultural','Archives'],
+     sub_sections:[{id:'collections',name:'Digital Collections'}],
+     endpoints:['Collections']},
+    {id:'nara',name:'National Archives',acronym:'NARA',description:'Historical federal records, documents, and archival materials',
+     base_url:'https://catalog.archives.gov/api/v2',auth_required:false,has_search:true,search_placeholder:'Search historical records...',
+     data_categories:['Historical','Archives','Government Records'],
+     sub_sections:[{id:'records',name:'Archival Records'}],
+     endpoints:['Records']},
+    {id:'dot',name:'Department of Transportation',acronym:'DOT',description:'Vehicle recalls, safety complaints, and transportation safety data via NHTSA',
+     base_url:'https://api.nhtsa.gov',auth_required:false,has_search:false,
+     data_categories:['Transportation','Safety','Vehicle Recalls'],
+     sub_sections:[{id:'recalls',name:'Vehicle Recalls'},{id:'complaints',name:'Safety Complaints'}],
+     endpoints:['Recalls','Complaints']},
+    {id:'sam',name:'System for Award Management',acronym:'SAM.gov',description:'Federal contract opportunities, entity registrations, procurement data',
+     base_url:'https://api.sam.gov',auth_required:true,has_search:true,search_placeholder:'Search contract opportunities...',
+     data_categories:['Contracts','Procurement','Federal Spending'],
+     sub_sections:[{id:'opportunities',name:'Contract Opportunities'}],
+     endpoints:['Opportunities']},
+    {id:'epa',name:'Environmental Protection Agency',acronym:'EPA',description:'Environmental data including water systems, facilities, and toxic releases',
+     base_url:'https://data.epa.gov',auth_required:false,has_search:false,
+     data_categories:['Environmental','Health','Compliance'],
+     sub_sections:[{id:'water_systems',name:'Water Systems'},{id:'facilities',name:'Regulated Facilities'},{id:'toxic_releases',name:'Toxic Release Inventory'}],
+     endpoints:['Water Systems','Facilities','Toxic Releases']},
+].filter(a => !a.skip);
+
+// Init
+async function init() {
+    // Try Flask backend first, fallback to client-side
+    try {
+        const resp = await fetch(`${API_BASE}/api/agencies`, {signal: AbortSignal.timeout(3000)});
+        if (resp.ok) {
+            agencies = await resp.json();
+        } else {
+            throw new Error('Backend returned error');
+        }
+    } catch (e) {
+        console.log('Flask backend unavailable, using client-side direct API mode');
+        useDirectApi = true;
+        agencies = CLIENT_AGENCIES;
+    }
+    renderSidebar();
+    renderOverview();
+}
+
+function renderSidebar() {
+    const nav = document.getElementById('agency-nav-list');
+    const categories = {};
+    agencies.forEach(a => {
+        const cats = (a.data_categories || ['Other']);
+        const primary = cats[0] || 'Other';
+        if (!categories[primary]) categories[primary] = [];
+        categories[primary].push(a);
+    });
+    let html = '';
+    for (const [cat, agencyList] of Object.entries(categories)) {
+        html += `<div class="nav-section-title" style="margin-top:8px">${cat}</div>`;
+        for (const a of agencyList) {
+            const endpointCount = (a.endpoints || []).length;
+            html += `<div class="nav-item" data-page="agency-${a.id}" onclick="selectAgency('${a.id}')">
+                <span class="nav-icon">&#128203;</span> ${a.acronym || a.name}
+                <span class="badge">${endpointCount}</span>
+            </div>`;
+        }
+    }
+    nav.innerHTML = html;
+    document.getElementById('agency-count').textContent = `${agencies.length} agencies`;
+}
+
+function renderOverview() {
+    const container = document.getElementById('overview-content');
+    let html = `<div class="stats-row">
+        <div class="stat-card"><div class="stat-value">${agencies.length}</div><div class="stat-label">Government Agencies</div></div>
+        <div class="stat-card"><div class="stat-value">${agencies.reduce((sum, a) => sum + (a.endpoints || []).length, 0)}</div><div class="stat-label">Data Endpoints</div></div>
+        <div class="stat-card"><div class="stat-value">${agencies.filter(a => !a.auth_required).length}</div><div class="stat-label">No Auth Required</div></div>
+        <div class="stat-card"><div class="stat-value">${new Set(agencies.flatMap(a => a.data_categories || [])).size}</div><div class="stat-label">Data Categories</div></div>
+    </div>`;
+    html += '<div class="overview-grid">';
+    for (const a of agencies) {
+        const tags = (a.data_categories || []).map(c => `<span class="tag">${c}</span>`).join('');
+        html += `<div class="agency-overview-card" onclick="selectAgency('${a.id}')">
+            <h3>${a.name || a.id}</h3>
+            <div class="acronym">${a.acronym || ''} ${a.auth_required ? '&#128274; Auth Required' : '&#128275; Open Access'}</div>
+            <p>${a.description || ''}</p>
+            <div class="tags">${tags}</div>
+        </div>`;
+    }
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// Page switching
+function setActivePage(page) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
+    if (navItem) navItem.classList.add('active');
+
+    document.getElementById('page-overview').style.display = page === 'overview' ? 'block' : 'none';
+    document.getElementById('page-agency').style.display = page.startsWith('agency-') ? 'flex' : 'none';
+    document.getElementById('page-chat').style.display = page === 'chat' ? 'flex' : 'none';
+}
+
+function showOverview() { setActivePage('overview'); }
+function showChat() { setActivePage('chat'); }
+
+// Agency selection
+async function selectAgency(agencyId) {
+    currentAgency = agencies.find(a => a.id === agencyId);
+    if (!currentAgency) return;
+
+    setActivePage(`agency-${agencyId}`);
+
+    document.getElementById('agency-title').textContent = currentAgency.name || agencyId;
+    document.getElementById('agency-source').textContent = currentAgency.base_url || '';
+
+    // Render sub-tabs
+    const subTabs = document.getElementById('sub-tabs');
+    const subs = currentAgency.sub_sections || [];
+    if (subs.length > 0) {
+        currentSubSection = subs[0].id;
+        subTabs.innerHTML = subs.map(s =>
+            `<button class="sub-tab ${s.id === currentSubSection ? 'active' : ''}" onclick="selectSubSection('${s.id}')">${s.name}</button>`
+        ).join('');
+    } else {
+        currentSubSection = '';
+        subTabs.innerHTML = '';
+    }
+
+    // Render search bar
+    const searchContainer = document.getElementById('search-bar-container');
+    if (currentAgency.has_search) {
+        searchContainer.innerHTML = `<div class="search-bar">
+            <input id="agency-search" placeholder="${currentAgency.search_placeholder || 'Search...'}" onkeydown="if(event.key==='Enter')searchAgency()">
+            <button onclick="searchAgency()">Search</button>
+        </div>`;
+    } else {
+        searchContainer.innerHTML = '';
+    }
+
+    fetchAgencyData();
+}
+
+function selectSubSection(subId) {
+    currentSubSection = subId;
+    document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.sub-tab[onclick="selectSubSection('${subId}')"]`)?.classList.add('active');
+    fetchAgencyData();
+}
+
+async function fetchAgencyData(searchQuery) {
+    const container = document.getElementById('agency-content');
+    container.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching data...</div>';
+
+    if (useDirectApi && DIRECT_API[currentAgency.id]) {
+        // Client-side direct API calls
+        try {
+            currentData = await DIRECT_API[currentAgency.id].fetch(currentSubSection, searchQuery);
+            document.getElementById('result-count').textContent = `${currentData.length} results`;
+            renderData();
+        } catch (e) {
+            container.innerHTML = `<div class="error-msg">API Error: ${e.message}<br><small>Some APIs may have CORS restrictions. Try running the Flask backend for full access.</small></div>`;
+        }
+        return;
+    }
+
+    // Flask backend mode
+    const params = new URLSearchParams();
+    if (currentSubSection) params.set('sub_section', currentSubSection);
+    if (datagovKey) params.set('api_key', datagovKey);
+    if (searchQuery) params.set('query', searchQuery);
+
+    try {
+        const resp = await fetch(`${API_BASE}/api/data/${currentAgency.id}?${params}`);
+        const data = await resp.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="error-msg">${data.error}</div>`;
+            return;
+        }
+
+        currentData = data.results || [];
+        document.getElementById('result-count').textContent = `${currentData.length} results`;
+        renderData();
+    } catch (e) {
+        container.innerHTML = `<div class="error-msg">Error: ${e.message}</div>`;
+    }
+}
+
+function searchAgency() {
+    const query = document.getElementById('agency-search')?.value;
+    if (!query) return;
+    fetchAgencyData(query);
+}
+
+function setView(view) {
+    currentView = view;
+    document.getElementById('btn-cards').classList.toggle('active', view === 'cards');
+    document.getElementById('btn-table').classList.toggle('active', view === 'table');
+    renderData();
+}
+
+function renderData() {
+    const container = document.getElementById('agency-content');
+    if (!currentData || currentData.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">No data available for this selection.</div>';
+        return;
+    }
+
+    if (currentView === 'cards') {
+        let html = '<div class="cards-grid">';
+        for (const item of currentData) {
+            const desc = (item.description || '').substring(0, 200);
+            const dateStr = item.date ? new Date(item.date).toLocaleDateString('en-US', {timeZone: 'UTC'}) : '';
+            const link = item.link ? `<a href="${item.link}" target="_blank" rel="noopener">View Source &#8599;</a>` : '';
+
+            // Extra fields
+            let extras = '';
+            for (const [k, v] of Object.entries(item)) {
+                if (!['title','description','date','link','error'].includes(k) && v) {
+                    extras += `<span>${k}: ${v}</span> `;
+                }
+            }
+
+            html += `<div class="data-card">
+                <h3>${item.title || 'Untitled'}</h3>
+                <p>${desc}</p>
+                <div class="meta">
+                    ${dateStr ? `<span>${dateStr}</span>` : ''}
+                    ${link}
+                    ${extras ? `<span style="opacity:0.6">${extras.substring(0, 100)}</span>` : ''}
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    } else {
+        // Table view
+        if (currentData.length === 0) return;
+        const keys = Object.keys(currentData[0]).filter(k => k !== 'error');
+        let html = '<table class="data-table"><thead><tr>';
+        for (const k of keys) {
+            html += `<th>${k}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+        for (const row of currentData) {
+            html += '<tr>';
+            for (const k of keys) {
+                let val = row[k] || '';
+                if (typeof val === 'string' && val.startsWith('http')) {
+                    val = `<a href="${val}" target="_blank">Link &#8599;</a>`;
+                } else if (typeof val === 'string' && val.length > 150) {
+                    val = val.substring(0, 150) + '...';
+                }
+                html += `<td>${val}</td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+}
+
+// Chat functions
+const CHAT_SYSTEM_PROMPT = `You are an AI assistant for OpenGovDash, a government data dashboard.
+You help users analyze, cross-reference, and understand data from multiple US government agencies.
+
+Available agencies: SEC (EDGAR filings), FDA (drug events, recalls, 510k), Treasury (debt, rates),
+USAspending (federal spending), NOAA (weather), EPA (environmental), Census (demographics),
+DOJ (press releases), BLS (employment, CPI), FCC (broadband, spectrum), USGS (earthquakes),
+NASA (space data), FTC (consumer protection), NIST (CVE vulnerabilities), SAM.gov (contracts),
+FEC (campaign finance), FDIC (banking), NIH (clinical trials, PubMed), LOC (library), NARA (archives), DOT/NHTSA (vehicle recalls).
+
+Cross-reference relationships:
+- FCC device registrations may also appear in FDA 510(k) for medical devices
+- SEC filings for pharma companies relate to FDA drug approvals
+- EPA facility data connects with SEC environmental disclosures
+- FDIC bank data connects with Treasury financial data
+- BLS employment data correlates with Census demographics
+- USAspending contracts connect with SAM.gov opportunities
+- NIST CVEs relate to FCC/FTC cybersecurity enforcement
+- FTC data security cases cross-reference with SEC cyber incident 8-K filings
+
+Analyze data, suggest cross-references, and explain regulatory relationships.`;
+
+async function sendChat() {
+    const input = document.getElementById('chat-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    if (!openaiKey) {
+        showApiKeyModal();
+        return;
+    }
+
+    input.value = '';
+    appendChat('user', msg);
+    const typingId = 'typing-' + Date.now();
+    appendTyping(typingId);
+
+    // Try Flask backend first, then direct OpenAI call
+    if (!useDirectApi) {
+        try {
+            const resp = await fetch(`${API_BASE}/api/chat`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    message: msg, openai_api_key: openaiKey, history: chatHistory,
+                    context_data: currentData.length > 0 ? { agency: currentAgency?.name, data_sample: currentData.slice(0, 5) } : {}
+                })
+            });
+            const data = await resp.json();
+            removeTyping(typingId);
+            if (data.error) appendChat('assistant', `Error: ${data.error}`);
+            else appendChat('assistant', data.reply);
+            return;
+        } catch (e) {
+            // Fall through to direct mode
+        }
+    }
+
+    // Direct OpenAI call from browser
+    try {
+        let systemContent = CHAT_SYSTEM_PROMPT;
+        if (currentData.length > 0) {
+            systemContent += `\n\nCurrent data context:\nAgency: ${currentAgency?.name}\nSample data: ${JSON.stringify(currentData.slice(0,3)).substring(0,1500)}`;
+        }
+        const messages = [{role:'system', content: systemContent}];
+        for (const h of chatHistory.slice(-10)) {
+            messages.push({role: h.role, content: h.content});
+        }
+        messages.push({role:'user', content: msg});
+
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${openaiKey}`},
+            body: JSON.stringify({ model:'gpt-4o-mini', messages, max_tokens:2000, temperature:0.7 })
+        });
+        const data = await resp.json();
+        removeTyping(typingId);
+
+        if (data.error) {
+            appendChat('assistant', `Error: ${data.error.message || JSON.stringify(data.error)}`);
+        } else {
+            appendChat('assistant', data.choices?.[0]?.message?.content || 'No response');
+        }
+    } catch (e) {
+        removeTyping(typingId);
+        appendChat('assistant', `Error: ${e.message}`);
+    }
+}
+
+function sendSuggestion(el) {
+    document.getElementById('chat-input').value = el.textContent;
+    showChat();
+    sendChat();
+}
+
+function appendChat(role, content) {
+    chatHistory.push({role, content});
+    const container = document.getElementById('chat-messages');
+    const avatar = role === 'user' ? '&#128100;' : '&#129302;';
+    container.innerHTML += `<div class="chat-message ${role}">
+        ${role === 'assistant' ? `<div class="chat-avatar">${avatar}</div>` : ''}
+        <div class="chat-bubble">${escapeHtml(content)}</div>
+        ${role === 'user' ? `<div class="chat-avatar">${avatar}</div>` : ''}
+    </div>`;
+    container.scrollTop = container.scrollHeight;
+}
+
+function appendTyping(id) {
+    const container = document.getElementById('chat-messages');
+    container.innerHTML += `<div class="chat-message assistant" id="${id}">
+        <div class="chat-avatar">&#129302;</div>
+        <div class="chat-bubble"><div class="spinner" style="display:inline-block;width:16px;height:16px;border-width:2px;vertical-align:middle;margin-right:6px;"></div>Thinking...</div>
+    </div>`;
+    container.scrollTop = container.scrollHeight;
+}
+
+function removeTyping(id) {
+    document.getElementById(id)?.remove();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// API Key modal
+function showApiKeyModal() {
+    document.getElementById('api-key-modal').style.display = 'flex';
+    document.getElementById('openai-key-input').value = openaiKey;
+    document.getElementById('datagov-key-input').value = datagovKey;
+}
+
+function closeApiKeyModal() {
+    document.getElementById('api-key-modal').style.display = 'none';
+}
+
+function saveApiKeys() {
+    openaiKey = document.getElementById('openai-key-input').value.trim();
+    datagovKey = document.getElementById('datagov-key-input').value.trim();
+    closeApiKeyModal();
+}
+
+// Start
+init();
+</script>
+</body>
+</html>
