@@ -46,13 +46,20 @@ python3 -m http.server 8000
 # Visit http://localhost:8000/index.html
 ```
 
-### Option 3: With Flask Backend (Optional CORS Proxy)
+### Option 3: With Flask Backend (Recommended for All Agencies)
 ```bash
 cd government-data-fun
+pip install -r requirements.txt
 python3 app.py
 # Backend runs on http://localhost:5000
 # Frontend auto-detects and uses it for API proxying
+# Then open http://localhost:5000 in browser (or http://localhost:5000/static/index.html if starting from repo)
 ```
+
+**Why use the backend?**
+- Some agencies (BLS, etc.) have strict CORS policies and only work through a proxy
+- More reliable and faster API calls
+- Automatic error handling and retries
 
 ---
 

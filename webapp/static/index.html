@@ -1131,7 +1131,7 @@
         </div>
 
         <!-- Welcome/Setup Page -->
-        <div id="page-welcome" style="display:none;">
+        <div id="page-welcome" style="display:none;flex-direction:column;height:100%;">
             <div class="content">
                 <div class="welcome-container">
                     <h2>Welcome to OpenGovDash</h2>
@@ -1385,17 +1385,35 @@ const apiState = {
 };
 
 function updateApiState() {
-    if (openaiKey) apiState.openai.configured = true;
-    else apiState.openai.configured = false;
+    apiState.openai.configured = !!openaiKey;
+    apiState.groq.configured = !!groqKey;
+    apiState.gemini.configured = !!geminiKey;
+    apiState.claude.configured = !!claudeKey;
 
-    if (groqKey) apiState.groq.configured = true;
-    else apiState.groq.configured = false;
+    // Also refresh welcome page badges if they exist
+    document.querySelectorAll('.provider-setup-option').forEach(el => {
+        const prov = el.dataset.provider;
+        const status = el.querySelector('.pso-status');
+        const btn = el.querySelector('.pso-btn');
+        if (status && btn && apiState[prov]) {
+            if (apiState[prov].configured) {
+                status.textContent = '✓ Added';
+                status.style.color = 'var(--accent)';
+                btn.textContent = 'Update';
+            } else {
+                status.textContent = 'Not set';
+                status.style.color = 'var(--text-muted)';
+                btn.textContent = 'Add';
+            }
+        }
+    });
 
-    if (geminiKey) apiState.gemini.configured = true;
-    else apiState.gemini.configured = false;
-
-    if (claudeKey) apiState.claude.configured = true;
-    else apiState.claude.configured = false;
+    // Update chat provider badge if visible
+    const badge = document.getElementById('chat-provider-badge');
+    if (badge) {
+        const names = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
+        badge.textContent = `Powered by ${names[aiProvider] || 'AI'}`;
+    }
 }
 
 function isProviderReady(provider) {
@@ -1646,16 +1664,40 @@ const DIRECT_API = {
             const year = new Date().getFullYear();
             const startYear = opts.dateFrom ? parseInt(opts.dateFrom.split('-')[0]) : year - 3;
             const endYear = opts.dateTo ? parseInt(opts.dateTo.split('-')[0]) : year;
-            const r = await fetch('https://api.bls.gov/publicAPI/v2/timeseries/data/', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({seriesid:[sid], startyear:String(startYear), endyear:String(endYear)})
-            });
-            const d = await r.json();
-            const series = (d.Results?.series?.[0]?.data || []).slice(0, lim);
-            return series.map(x => ({
-                title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
-                date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
-            }));
+            try {
+                // Try direct API first
+                const r = await fetch('https://api.bls.gov/publicAPI/v2/timeseries/data/', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({seriesid:[sid], startyear:String(startYear), endyear:String(endYear)}),
+                    signal: AbortSignal.timeout(5000)
+                });
+                if (r.ok) {
+                    const d = await r.json();
+                    const series = (d.Results?.series?.[0]?.data || []).slice(0, lim);
+                    return series.map(x => ({
+                        title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
+                        date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
+                    }));
+                }
+            } catch (e) {
+                // Fall back to Flask backend if CORS fails
+                try {
+                    const r = await fetch(`${API_BASE}/api/bls?series=${sid}&start_year=${startYear}&end_year=${endYear}&limit=${lim}`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.data || []).map(x => ({
+                            title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
+                            date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
+                        }));
+                    }
+                } catch (e2) { }
+            }
+            // Return empty with message if both fail
+            return [{
+                title: `${name}: Data Unavailable`,
+                description: 'BLS API requires backend proxy. Run Flask backend for full access.',
+                date: '', link: 'https://www.bls.gov/data/'
+            }];
         }
     },
     census: {
@@ -1703,20 +1745,39 @@ const DIRECT_API = {
             const lim = opts.limit || 20;
             if (sub === 'pubmed') {
                 const q = query || 'health';
-                let dateFilter = '';
-                if (opts.dateFrom) dateFilter += `&mindate=${opts.dateFrom.replace(/-/g,'/')}&datetype=edat`;
-                if (opts.dateTo) dateFilter += `&maxdate=${opts.dateTo.replace(/-/g,'/')}`;
-                const r = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${q}&retmax=${lim}&retmode=json&sort=date${dateFilter}`);
-                const d = await r.json();
-                const ids = d.esearchresult?.idlist || [];
-                if (ids.length) {
-                    const r2 = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${ids.join(',')}&retmode=json`);
-                    const d2 = await r2.json();
-                    return ids.filter(id => d2.result?.[id]?.title).map(id => {
-                        const a = d2.result[id];
-                        return { title: a.title, description: `Authors: ${(a.authors||[]).slice(0,3).map(x=>x.name).join(', ')} | Journal: ${a.source||''}`,
-                            date: a.pubdate || '', link: `https://pubmed.ncbi.nlm.nih.gov/${id}/` };
-                    });
+                try {
+                    let dateFilter = '';
+                    if (opts.dateFrom) dateFilter += `&mindate=${opts.dateFrom.replace(/-/g,'/')}&datetype=edat`;
+                    if (opts.dateTo) dateFilter += `&maxdate=${opts.dateTo.replace(/-/g,'/')}`;
+                    const r = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${q}&retmax=${lim}&retmode=json&sort=date${dateFilter}`, {signal: AbortSignal.timeout(5000)});
+                    if (r.ok) {
+                        const d = await r.json();
+                        const ids = d.esearchresult?.idlist || [];
+                        if (ids.length) {
+                            const r2 = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${ids.join(',')}&retmode=json`);
+                            if (r2.ok) {
+                                const d2 = await r2.json();
+                                return ids.filter(id => d2.result?.[id]?.title).map(id => {
+                                    const a = d2.result[id];
+                                    return { title: a.title, description: `Authors: ${(a.authors||[]).slice(0,3).map(x=>x.name).join(', ')} | Journal: ${a.source||''}`,
+                                        date: a.pubdate || '', link: `https://pubmed.ncbi.nlm.nih.gov/${id}/` };
+                                });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Fall back to Flask proxy
+                    try {
+                        const r = await fetch(`${API_BASE}/api/nih/pubmed?q=${encodeURIComponent(q)}&limit=${lim}&date_min=${opts.dateFrom || ''}`);
+                        if (r.ok) {
+                            const d = await r.json();
+                            const result = d.data || {};
+                            return Object.values(result).filter(x => x.title).slice(0, lim).map(x => ({
+                                title: x.title || '', description: (x.abstract || '').substring(0,300),
+                                date: x.pubdate || '', link: `https://pubmed.ncbi.nlm.nih.gov/${x.uid}/`
+                            }));
+                        }
+                    } catch (e2) { }
                 }
                 return [];
             }
@@ -1748,7 +1809,7 @@ const DIRECT_API = {
                     date: x.receipt_date || '', link: `https://www.fec.gov/data/committee/${x.committee_id||''}/`
                 }));
             }
-            const r = await fetch(`https://api.open.fec.gov/v1/candidates/?api_key=${key}&sort=-receipts&per_page=${lim}&election_year=2024`);
+            const r = await fetch(`https://api.open.fec.gov/v1/candidates/?api_key=${key}&per_page=${lim}&election_year=2024&sort=-total_receipts`);
             const d = await r.json();
             return (d.results || []).map(x => ({
                 title: x.name || '', description: `Party: ${x.party_full||''} | Office: ${x.office_full||''} | State: ${x.state||''}`,
@@ -1760,40 +1821,69 @@ const DIRECT_API = {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
             const q = query || 'government';
-            const r = await fetch(`https://www.loc.gov/search/?q=${encodeURIComponent(q)}&fo=json&c=${lim}`);
-            const d = await r.json();
-            return (d.results || []).map(x => ({
-                title: x.title || (Array.isArray(x.description) ? x.description[0] : ''),
-                description: (Array.isArray(x.description) ? x.description[0] : (x.description || '')).substring(0,300),
-                date: x.date || '', link: x.url || x.id || ''
-            }));
+            try {
+                const r = await fetch(`https://www.loc.gov/search/?q=${encodeURIComponent(q)}&fo=json&c=${lim}`, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) {
+                    const d = await r.json();
+                    return (d.results || []).map(x => ({
+                        title: x.title || (Array.isArray(x.description) ? x.description[0] : ''),
+                        description: (Array.isArray(x.description) ? x.description[0] : (x.description || '')).substring(0,300),
+                        date: x.date || '', link: x.url || x.id || ''
+                    }));
+                }
+            } catch (e) {
+                // Fall back to Flask proxy
+                try {
+                    const r = await fetch(`${API_BASE}/api/loc?q=${encodeURIComponent(q)}&limit=${lim}`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        const data = d.data || {};
+                        return (data.results || []).map(x => ({
+                            title: x.title || '', description: (x.description || '').substring(0,300),
+                            date: x.date || '', link: x.url || ''
+                        }));
+                    }
+                } catch (e2) { }
+            }
+            return [{title: 'LOC Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.loc.gov/'}];
         }
     },
     usaspending: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
-            if (query) {
+            try {
+                // Try direct API with proxy fallback
                 const timePeriod = {start_date: opts.dateFrom || "2024-01-01", end_date: opts.dateTo || "2026-12-31"};
+                const payload = query
+                    ? {filters:{keywords:[query],time_period:[timePeriod]},fields:["Award ID","Recipient Name","Award Amount","Description","Start Date","Awarding Agency"],limit:lim, page:1, sort:"Award Amount", order:"desc"}
+                    : {filters:{}, limit:lim, page:1, fields:["Award ID","Recipient Name","Award Amount","Description","Start Date","Awarding Agency"]};
+
                 const r = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
                     method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({
-                        filters:{keywords:[query],time_period:[timePeriod]},
-                        fields:["Award ID","Recipient Name","Award Amount","Description","Start Date","Awarding Agency"],
-                        limit:lim, page:1, sort:"Award Amount", order:"desc"
-                    })
+                    body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(5000)
                 });
-                const d = await r.json();
-                return (d.results||[]).map(x => ({
-                    title: x['Recipient Name']||'Unknown', description: `Award: ${x['Award ID']||''} - ${(x.Description||'').substring(0,150)}`,
-                    date: x['Start Date']||'', link: `https://www.usaspending.gov/award/${x.internal_id||''}`, amount: x['Award Amount']
-                }));
+                if (r.ok) {
+                    const d = await r.json();
+                    return (d.results||[]).slice(0,lim).map(x => ({
+                        title: x['Recipient Name']||'Unknown', description: `Award: ${x['Award ID']||''} - ${(x.Description||'').substring(0,150)}`,
+                        date: x['Start Date']||'', link: `https://www.usaspending.gov/award/${x.internal_id||''}`, amount: x['Award Amount']
+                    }));
+                }
+            } catch (e) {
+                // Fall back to Flask proxy
+                try {
+                    const r = await fetch(`${API_BASE}/api/usaspending?limit=${lim}`, {method:'POST'});
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.data||[]).map(x => ({
+                            title: x.recipient_name||'Unknown', description: `Amount: $${(x.federal_action_obligation||0).toLocaleString()}`,
+                            date: x.action_date||'', link: 'https://www.usaspending.gov/'
+                        }));
+                    }
+                } catch (e2) { }
             }
-            const r = await fetch('https://api.usaspending.gov/api/v2/references/toptier_agencies/');
-            const d = await r.json();
-            return (d.results||[]).slice(0,lim).map(x => ({
-                title: x.agency_name||'', description: `Budget: $${(x.budget_authority_amount||0).toLocaleString()} | Obligated: $${(x.obligated_amount||0).toLocaleString()}`,
-                date: '', link: `https://www.usaspending.gov/agency/${x.agency_slug||''}`, abbreviation: x.abbreviation||''
-            }));
+            return [{title: 'USAspending Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.usaspending.gov/'}];
         }
     },
     nist: {
@@ -1836,6 +1926,224 @@ const DIRECT_API = {
             // Default: equipment auth
             return await fccEquipmentSearch(query, opts);
         }
+    },
+    doj: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
+            try {
+                // DOJ data via Flask backend (direct API unreliable)
+                const r = await fetch(`${API_BASE}/api/doj?limit=${lim}`, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) {
+                    const d = await r.json();
+                    if (d.status === 'success' && d.data && d.data.length > 0) {
+                        return (d.data || []).map(x => ({
+                            title: x.title || x.name || 'DOJ Record',
+                            description: (x.description || x.excerpt || '').substring(0,300),
+                            date: x.date || x.publish_date || '',
+                            link: x.url || x.link || 'https://www.justice.gov/'
+                        }));
+                    }
+                }
+            } catch (e) {
+                // Fall back to direct API as secondary option
+                try {
+                    const r = await fetch(`https://data.gov/api/catalogs`, {signal: AbortSignal.timeout(3000)});
+                    if (r.ok) {
+                        // If data.gov API works, return placeholder
+                        return [{title: 'DOJ Records', description: 'Available via Flask backend', date: '', link: 'https://www.justice.gov/'}];
+                    }
+                } catch (e2) { }
+            }
+            return [{title: 'DOJ Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.justice.gov/'}];
+        }
+    },
+    dot: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
+            try {
+                // Try Flask backend first (NHTSA API has strict access controls)
+                const endpoint = sub === 'complaints' ? 'complaints' : 'recalls';
+                const r = await fetch(`${API_BASE}/api/dot/${endpoint}?limit=${lim}`, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) {
+                    const d = await r.json();
+                    if (d.status === 'success' && d.data && d.data.length > 0) {
+                        return (d.data || []).map(x => ({
+                            title: x.title || x.component || 'DOT Record',
+                            description: (x.description || x.summary || '').substring(0,300),
+                            date: x.date || x.report_date || '', link: x.link || 'https://www.nhtsa.gov/'
+                        }));
+                    }
+                }
+
+                // Fallback: try direct API (may be blocked)
+                if (sub === 'complaints' || (!sub && query)) {
+                    const url = `https://api.nhtsa.gov/complaints?pagesize=${lim}&format=json`;
+                    const r2 = await fetch(url, {signal: AbortSignal.timeout(3000)});
+                    if (r2.ok) {
+                        const d = await r2.json();
+                        return (d.results || []).map(x => ({
+                            title: x.complaint_text?.substring(0,80) || 'Safety Complaint',
+                            description: `${x.vehicle_make} ${x.vehicle_year} | ${(x.complaint_text || '').substring(0,200)}`,
+                            date: x.complaint_date || '', link: 'https://www.nhtsa.gov/'
+                        }));
+                    }
+                } else {
+                    const url = `https://api.nhtsa.gov/recalls/recallsearch?pageindex=0&resultsperpage=${lim}&format=json`;
+                    const r2 = await fetch(url, {signal: AbortSignal.timeout(3000)});
+                    if (r2.ok) {
+                        const d = await r2.json();
+                        return (d.results || []).map(x => ({
+                            title: `${x.Make} ${x.ModelYear} - ${x.Component}`,
+                            description: (x.Summary || '').substring(0,300),
+                            date: x.ReportReceivedDate || '', link: 'https://www.nhtsa.gov/recalls'
+                        }));
+                    }
+                }
+            } catch (e) {
+                // Final fallback
+                try {
+                    const endpoint = sub === 'complaints' ? 'complaints' : 'recalls';
+                    const r = await fetch(`${API_BASE}/api/dot/${endpoint}?limit=${lim}`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.data || []).map(x => ({
+                            title: x.title || '', description: x.description || '',
+                            date: x.date || '', link: 'https://www.nhtsa.gov/'
+                        }));
+                    }
+                } catch (e2) { }
+            }
+            return [{title: 'DOT Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.nhtsa.gov/'}];
+        }
+    },
+    epa: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
+            try {
+                // EPA data primarily via Flask backend for reliability
+                const r = await fetch(`${API_BASE}/api/epa?sub=${sub || 'tri'}&limit=${lim}`, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) {
+                    const d = await r.json();
+                    if (d.status === 'success' && d.data && d.data.length > 0) {
+                        return (d.data || []).map(x => ({
+                            title: x.name || x.facility_name || 'EPA Record',
+                            description: (x.description || x.location || '').substring(0,300),
+                            date: x.date || x.last_update || '', link: 'https://www.epa.gov/'
+                        }));
+                    }
+                }
+            } catch (e) {
+                // Fall back to direct Envirofacts API as secondary
+                try {
+                    let url = 'https://data.epa.gov/api/3/action/datastore_search?resource_id=';
+                    const resourceId = sub === 'water' ? 'water-system-id' : 'tri-data-id';
+                    const r = await fetch(`${url}${resourceId}&limit=${lim}`, {signal: AbortSignal.timeout(3000)});
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.result?.records || []).map(x => ({
+                            title: x.name || 'EPA Record',
+                            description: (x.description || '').substring(0,300),
+                            date: x.date || '', link: 'https://www.epa.gov/'
+                        }));
+                    }
+                } catch (e2) { }
+            }
+            return [{title: 'EPA Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.epa.gov/'}];
+        }
+    },
+    sam: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
+            const key = datagovKey || 'DEMO_KEY';
+            try {
+                const url = `https://api.sam.gov/opportunities/v2/search?api_key=${key}&pagesize=${lim}&keyword=${query || ''}`;
+                const r = await fetch(url, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) {
+                    const d = await r.json();
+                    return (d.opportunitiesData || []).slice(0, lim).map(x => ({
+                        title: x.title || 'Contract Opportunity',
+                        description: (x.description || '').substring(0,300),
+                        date: x.postedDate || '', link: x.url || 'https://sam.gov'
+                    }));
+                }
+            } catch (e) {
+                // Fall back to proxy
+                try {
+                    const r = await fetch(`${API_BASE}/api/sam?key=${key}&limit=${lim}&q=${encodeURIComponent(query || '')}`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.data || []).map(x => ({
+                            title: x.title || '', description: x.description || '',
+                            date: x.date || '', link: x.url || 'https://sam.gov'
+                        }));
+                    }
+                } catch (e2) { }
+            }
+            return [{title: 'SAM.gov requires API key', description: 'Get free key at api.sam.gov', date: '', link: 'https://sam.gov'}];
+        }
+    },
+    ftc: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
+            try {
+                // FTC ReportPortal API
+                const url = `https://reportportal.ftc.gov/api/widget/data?pagesize=${lim}`;
+                const r = await fetch(url, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) {
+                    const d = await r.json();
+                    const reports = Array.isArray(d) ? d : (d.data || d.reports || []);
+                    return reports.slice(0, lim).map(x => ({
+                        title: x.report_type || x.title || 'FTC Report',
+                        description: (x.description || x.summary || '').substring(0,300),
+                        date: x.date_reported || x.date || '', link: 'https://reportportal.ftc.gov/'
+                    }));
+                }
+            } catch (e) {
+                // Fall back to proxy
+                try {
+                    const r = await fetch(`${API_BASE}/api/ftc?limit=${lim}`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.data || []).map(x => ({
+                            title: x.title || '', description: x.description || '',
+                            date: x.date || '', link: x.url || 'https://www.ftc.gov/'
+                        }));
+                    }
+                } catch (e2) { }
+            }
+            return [{title: 'FTC Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.ftc.gov/'}];
+        }
+    },
+    nara: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = opts.limit || 20;
+            const q = query || 'federal government';
+            try {
+                const url = `https://catalog.archives.gov/api/v2/records?q=${encodeURIComponent(q)}&pageSize=${lim}`;
+                const r = await fetch(url, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) {
+                    const d = await r.json();
+                    return (d.records || []).map(x => ({
+                        title: x.title || 'Archive Record',
+                        description: (x.scopeAndContent || x.description || '').substring(0,300),
+                        date: x.dateCreated || x.date || '', link: x.url || 'https://catalog.archives.gov/'
+                    }));
+                }
+            } catch (e) {
+                // Fall back to proxy
+                try {
+                    const r = await fetch(`${API_BASE}/api/nara?q=${encodeURIComponent(q)}&limit=${lim}`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.data || []).map(x => ({
+                            title: x.title || '', description: x.description || '',
+                            date: x.date || '', link: x.url || 'https://catalog.archives.gov/'
+                        }));
+                    }
+                } catch (e2) { }
+            }
+            return [{title: 'NARA Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://catalog.archives.gov/'}];
+        }
     }
 };
 
@@ -1850,7 +2158,7 @@ async function fccEquipmentSearch(query, opts = {}) {
             let dateFilter = '';
             if (opts.dateFrom) dateFilter += ` AND grant_date >= '${opts.dateFrom}'`;
             if (opts.dateTo) dateFilter += ` AND grant_date <= '${opts.dateTo}'`;
-            const r = await corsFetch(`https://opendata.fcc.gov/resource/i5ic-sdri.json?$limit=${lim}&$order=grant_date DESC${dateFilter ? '&$where=1=1' + encodeURIComponent(dateFilter) : ''}`);
+            const r = await corsFetch(`https://opendata.fcc.gov/resource/3b3k-34jp.json?$limit=${lim}&$order=grant_date DESC${dateFilter ? '&$where=1=1' + encodeURIComponent(dateFilter) : ''}`);
             const d = await r.json();
             if (Array.isArray(d) && d.length > 0) {
                 return d.map(x => ({
@@ -1907,7 +2215,7 @@ async function fccEquipmentSearch(query, opts = {}) {
     // 1) Equipment authorization records (only if we have a grantee code)
     if (granteeCode) {
         try {
-            let url = `https://opendata.fcc.gov/resource/i5ic-sdri.json?$limit=${lim}&$where=grantee_code='${granteeCode}'`;
+            let url = `https://opendata.fcc.gov/resource/3b3k-34jp.json?$limit=${lim}&$where=grantee_code='${granteeCode}'`;
             if (productCode) url += ` AND product_code='${productCode}'`;
             const r = await corsFetch(url);
             const d = await r.json();
@@ -2032,7 +2340,7 @@ async function fccNameSearch(q) {
     // Strategy C: Also search the equipment dataset applicant_name
     if (results.length === 0) {
         try {
-            const r = await corsFetch(`https://opendata.fcc.gov/resource/i5ic-sdri.json?$limit=30&$q=${encodeURIComponent(q)}`);
+            const r = await corsFetch(`https://opendata.fcc.gov/resource/3b3k-34jp.json?$limit=30&$q=${encodeURIComponent(q)}`);
             const d = await r.json();
             if (Array.isArray(d) && d.length > 0) {
                 // Deduplicate by grantee_code
@@ -2333,6 +2641,26 @@ async function init() {
         useDirectApi = true;
         agencies = CLIENT_AGENCIES;
     }
+    // Load API keys from localStorage
+    try {
+        if (localStorage.getItem('openai_key')) openaiKey = localStorage.getItem('openai_key');
+        if (localStorage.getItem('groq_key')) groqKey = localStorage.getItem('groq_key');
+        if (localStorage.getItem('gemini_key')) geminiKey = localStorage.getItem('gemini_key');
+        if (localStorage.getItem('claude_key')) claudeKey = localStorage.getItem('claude_key');
+        if (localStorage.getItem('datagov_key')) datagovKey = localStorage.getItem('datagov_key');
+        // Also restore which provider was last used
+        if (localStorage.getItem('ai_provider')) aiProvider = localStorage.getItem('ai_provider');
+    } catch(e) { console.log('Could not load API keys from localStorage'); }
+
+    // Auto-detect best provider if still on free and a key is available
+    if (aiProvider === 'free') {
+        if (openaiKey) aiProvider = 'openai';
+        else if (groqKey) aiProvider = 'groq';
+        else if (geminiKey) aiProvider = 'gemini';
+        else if (claudeKey) aiProvider = 'claude';
+    }
+    updateApiState();
+
     renderSidebar();
     renderOverview();
     // Show welcome page on first visit
@@ -2500,7 +2828,7 @@ function setActivePage(page) {
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
 
-    document.getElementById('page-welcome').style.display = page === 'welcome' ? 'block' : 'none';
+    document.getElementById('page-welcome').style.display = page === 'welcome' ? 'flex' : 'none';
     document.getElementById('page-overview').style.display = page === 'overview' ? 'block' : 'none';
     document.getElementById('page-agency').style.display = page.startsWith('agency-') ? 'flex' : 'none';
     document.getElementById('page-chat').style.display = page === 'chat' ? 'flex' : 'none';
@@ -2538,14 +2866,26 @@ function completeSetup() {
     const dgField = document.getElementById('welcome-datagov-key');
     if (keyField && keyField.value.trim()) {
         const key = keyField.value.trim();
-        if (aiProvider === 'openai') openaiKey = key;
-        else if (aiProvider === 'groq') groqKey = key;
-        else if (aiProvider === 'gemini') geminiKey = key;
-        else if (aiProvider === 'claude') claudeKey = key;
+        if (aiProvider === 'openai') {
+            openaiKey = key;
+            try { localStorage.setItem('openai_key', key); } catch(e) {}
+        } else if (aiProvider === 'groq') {
+            groqKey = key;
+            try { localStorage.setItem('groq_key', key); } catch(e) {}
+        } else if (aiProvider === 'gemini') {
+            geminiKey = key;
+            try { localStorage.setItem('gemini_key', key); } catch(e) {}
+        } else if (aiProvider === 'claude') {
+            claudeKey = key;
+            try { localStorage.setItem('claude_key', key); } catch(e) {}
+        }
     }
     if (dgField && dgField.value.trim()) {
         datagovKey = dgField.value.trim();
+        try { localStorage.setItem('datagov_key', dgField.value.trim()); } catch(e) {}
     }
+    // Save selected provider
+    try { localStorage.setItem('ai_provider', aiProvider); } catch(e) {}
     updateApiState();
     try { sessionStorage.setItem('ogd_setup_done', '1'); } catch(e) {}
     showOverview();
@@ -3257,23 +3597,40 @@ async function callAI(messages) {
     }
 
     if (provider === 'groq') {
-        // Groq API with user's own key
         if (!groqKey) throw new Error('Groq API key is required. Set it in AI Provider Settings.');
-        const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${groqKey}`},
-            body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages, max_tokens:2000, temperature:0.7 })
-        });
-        return await resp.json();
+        try {
+            const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${groqKey}`},
+                body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages, max_tokens:2000, temperature:0.7 })
+            });
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                return { error: { message: `Groq ${resp.status}: ${errData?.error?.message || resp.statusText}` } };
+            }
+            return await resp.json();
+        } catch (fetchErr) {
+            throw new Error(`Network error: ${fetchErr.message}. If using file://, switch to http://localhost instead.`);
+        }
     }
 
     if (provider === 'openai') {
-        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${openaiKey}`},
-            body: JSON.stringify({ model:'gpt-4o-mini', messages, max_tokens:2000, temperature:0.7 })
-        });
-        return await resp.json();
+        if (!openaiKey) throw new Error('OpenAI API key is missing. Open API Key settings and save your key.');
+        console.log('[OpenGovDash] Calling OpenAI with key:', openaiKey.substring(0,8) + '...');
+        try {
+            const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${openaiKey}`},
+                body: JSON.stringify({ model:'gpt-4o-mini', messages, max_tokens:2000, temperature:0.7 })
+            });
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                return { error: { message: `OpenAI ${resp.status}: ${errData?.error?.message || resp.statusText}` } };
+            }
+            return await resp.json();
+        } catch (fetchErr) {
+            throw new Error(`Network error: ${fetchErr.message}. If using file://, switch to http://localhost instead.`);
+        }
     }
 
     if (provider === 'gemini') {
@@ -3350,7 +3707,11 @@ async function sendChat() {
         if (data.error) {
             appendChat('assistant', `Error: ${data.error.message || JSON.stringify(data.error)}`);
         } else {
-            appendChat('assistant', data.choices?.[0]?.message?.content || 'No response');
+            const providerNames = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
+            const providerTag = `[${providerNames[aiProvider] || aiProvider}]`;
+            const content = data.choices?.[0]?.message?.content || 'No response';
+            // Display with tag, but store clean content in history
+            appendChat('assistant', `${providerTag} ${content}`, {historyContent: content});
         }
     } catch (e) {
         removeTyping(typingId);
@@ -3364,8 +3725,12 @@ function sendSuggestion(el) {
     sendChat();
 }
 
-function appendChat(role, content) {
-    chatHistory.push({role, content});
+function appendChat(role, content, opts = {}) {
+    // Store clean content in history (no display tags) unless it's a system notice
+    if (!opts.noHistory) {
+        const cleanContent = opts.historyContent || content;
+        chatHistory.push({role, content: cleanContent});
+    }
     const container = document.getElementById('chat-messages');
     const avatar = role === 'user' ? svgIcon('user', 14) : svgIcon('bot', 14);
     container.innerHTML += `<div class="chat-message ${role}">
@@ -3414,20 +3779,27 @@ function modalProviderChange() {
     const keySection = document.getElementById('modal-key-section');
     const keyLabel = document.getElementById('modal-key-label');
     const keyInput = document.getElementById('modal-key-input');
+
     if (provider === 'free') {
         keySection.style.display = 'none';
     } else {
         keySection.style.display = 'block';
         const labels = { openai: 'OpenAI API Key', groq: 'Groq API Key', gemini: 'Google Gemini API Key', claude: 'Anthropic API Key' };
         const placeholders = { openai: 'sk-...', groq: 'gsk_...', gemini: 'AI...', claude: 'sk-ant-...' };
-        keyLabel.textContent = labels[provider] || 'API Key';
-        keyInput.placeholder = placeholders[provider] || 'Enter API key...';
+
         // Load existing key for this provider
-        if (provider === 'openai') keyInput.value = openaiKey;
-        else if (provider === 'groq') keyInput.value = groqKey;
-        else if (provider === 'gemini') keyInput.value = geminiKey;
-        else if (provider === 'claude') keyInput.value = claudeKey;
-        else keyInput.value = '';
+        let existingKey = '';
+        if (provider === 'openai') existingKey = openaiKey;
+        else if (provider === 'groq') existingKey = groqKey;
+        else if (provider === 'gemini') existingKey = geminiKey;
+        else if (provider === 'claude') existingKey = claudeKey;
+
+        keyInput.value = existingKey;
+
+        // Update label with status badge
+        const statusBadge = existingKey ? ' <span style="color:var(--accent-success, #10b981);font-size:11px;margin-left:6px;">✓ Configured</span>' : '';
+        keyLabel.innerHTML = (labels[provider] || 'API Key') + statusBadge;
+        keyInput.placeholder = placeholders[provider] || 'Enter API key...';
     }
 }
 
@@ -3438,13 +3810,40 @@ function closeApiKeyModal() {
 function saveApiKeys() {
     aiProvider = document.getElementById('modal-provider-select').value;
     const key = document.getElementById('modal-key-input')?.value?.trim() || '';
-    if (aiProvider === 'openai') openaiKey = key;
-    else if (aiProvider === 'groq') groqKey = key;
-    else if (aiProvider === 'gemini') geminiKey = key;
-    else if (aiProvider === 'claude') claudeKey = key;
+
+    // Save to memory AND localStorage
+    if (aiProvider === 'openai') {
+        openaiKey = key;
+        try { localStorage.setItem('openai_key', key); } catch(e) {}
+    }
+    else if (aiProvider === 'groq') {
+        groqKey = key;
+        try { localStorage.setItem('groq_key', key); } catch(e) {}
+    }
+    else if (aiProvider === 'gemini') {
+        geminiKey = key;
+        try { localStorage.setItem('gemini_key', key); } catch(e) {}
+    }
+    else if (aiProvider === 'claude') {
+        claudeKey = key;
+        try { localStorage.setItem('claude_key', key); } catch(e) {}
+    }
+
+    // Save selected provider
+    try { localStorage.setItem('ai_provider', aiProvider); } catch(e) {}
+
     datagovKey = document.getElementById('datagov-key-input').value.trim();
+    if (datagovKey) try { localStorage.setItem('datagov_key', datagovKey); } catch(e) {}
+
     updateApiState();
     closeApiKeyModal();
+
+    // Show confirmation in chat area
+    const providerNames = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
+    const name = providerNames[aiProvider] || aiProvider;
+    if (key || aiProvider === 'free') {
+        appendChat('assistant', `✓ Switched to ${name}. ${aiProvider !== 'free' ? 'API key saved.' : ''} Ready to chat!`, {noHistory: true});
+    }
 }
 
 // Provider setup modal - guides user through getting API keys
@@ -3488,14 +3887,40 @@ function saveSetupKey(provider) {
         alert('Please paste your API key');
         return;
     }
-    if (provider === 'openai') openaiKey = key;
-    else if (provider === 'groq') groqKey = key;
-    else if (provider === 'gemini') geminiKey = key;
-    else if (provider === 'claude') claudeKey = key;
+
+    // Save to memory AND localStorage
+    let currentKey = '';
+    if (provider === 'openai') {
+        currentKey = openaiKey;
+        openaiKey = key;
+        try { localStorage.setItem('openai_key', key); } catch(e) {}
+    }
+    else if (provider === 'groq') {
+        currentKey = groqKey;
+        groqKey = key;
+        try { localStorage.setItem('groq_key', key); } catch(e) {}
+    }
+    else if (provider === 'gemini') {
+        currentKey = geminiKey;
+        geminiKey = key;
+        try { localStorage.setItem('gemini_key', key); } catch(e) {}
+    }
+    else if (provider === 'claude') {
+        currentKey = claudeKey;
+        claudeKey = key;
+        try { localStorage.setItem('claude_key', key); } catch(e) {}
+    }
+
+    // Also switch active provider to the one just configured
+    aiProvider = provider;
+    try { localStorage.setItem('ai_provider', provider); } catch(e) {}
 
     updateApiState();
     closeProviderSetupModal();
-    appendChat('assistant', `✓ ${apiState[provider].name} is now configured. Try asking your question again!`);
+
+    // Show confirmation in chat (don't pollute history sent to AI)
+    const action = currentKey ? 'updated' : 'configured';
+    appendChat('assistant', `✓ ${apiState[provider].name} is now ${action}. Ready to chat!`, {noHistory: true});
 }
 
 // Multi-provider setup from welcome page
