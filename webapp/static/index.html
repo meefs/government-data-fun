@@ -2346,7 +2346,13 @@ async function init() {
 function renderSidebar() {
     const nav = document.getElementById('agency-nav-list');
     let html = '';
-    for (const a of agencies) {
+    // Sort agencies alphabetically by acronym or name
+    const sorted = [...agencies].sort((a, b) => {
+        const aDisplay = (a.acronym || a.name).toLowerCase();
+        const bDisplay = (b.acronym || b.name).toLowerCase();
+        return aDisplay.localeCompare(bDisplay);
+    });
+    for (const a of sorted) {
         const endpointCount = (a.endpoints || []).length;
         html += `<div class="nav-item" data-page="agency-${a.id}" onclick="selectAgency('${a.id}')">
             ${a.acronym || a.name}
