@@ -28,6 +28,7 @@ A lightning-fast, zero-setup web app for exploring 21 government agencies with 5
 
 ## Quick Start
 
+![welcome](/images/Welcome.png)
 ### Option 1: Direct Browser (No Installation)
 ```bash
 # Clone repo
@@ -46,20 +47,13 @@ python3 -m http.server 8000
 # Visit http://localhost:8000/index.html
 ```
 
-### Option 3: With Flask Backend (Recommended for All Agencies)
+### Option 3: With Flask Backend (Optional CORS Proxy)
 ```bash
 cd government-data-fun
-pip install -r requirements.txt
 python3 app.py
 # Backend runs on http://localhost:5000
 # Frontend auto-detects and uses it for API proxying
-# Then open http://localhost:5000 in browser (or http://localhost:5000/static/index.html if starting from repo)
 ```
-
-**Why use the backend?**
-- Some agencies (BLS, etc.) have strict CORS policies and only work through a proxy
-- More reliable and faster API calls
-- Automatic error handling and retries
 
 ---
 
@@ -89,6 +83,7 @@ The app works immediately with **Free Mode** — no keys needed. For other provi
 ## How to Use
 
 ### Browse Data
+![Data Cards](/images/NIHTables.png)
 1. **Select an agency** from the left sidebar (SEC, FDA, NASA, etc.)
 2. **Click endpoint card** to see what data is available (e.g., "SEC Filings", "FDA Drug Events")
 3. **Search** for specific terms, companies, or identifiers
@@ -96,6 +91,7 @@ The app works immediately with **Free Mode** — no keys needed. For other provi
 5. **Filter by date** – optional date range controls
 
 ### AI Chatbot
+![Chat](/images/AIChat.png)
 1. Click **"AI Cross-Reference Chatbot"** in the sidebar
 2. **Free Mode works immediately** — no setup needed
 3. Type questions like:
