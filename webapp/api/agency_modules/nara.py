@@ -10,6 +10,9 @@ def search_records(query="federal", count=20):
         params = {"q": query, "limit": count}
         resp = requests.get(url, params=params, headers=HEADERS, timeout=15)
         if resp.status_code == 200:
+            content_type = resp.headers.get('Content-Type', '')
+            if 'json' not in content_type:
+                return [{"title": "NARA API Unavailable", "description": "The National Archives API is currently returning non-JSON responses. Visit catalog.archives.gov directly.", "date": "", "link": "https://catalog.archives.gov/"}]
             results = resp.json().get('body', {}).get('hits', {}).get('hits', [])
             return [{
                 'title': r.get('_source', {}).get('title', ''),

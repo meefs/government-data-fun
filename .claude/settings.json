@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk '/^const CLIENT_AGENCIES = \\\\[/,/^\\\\].filter/ {print}' \"C:\\\\Users\\\\joshu\\\\OneDrive\\\\Apps\\\\GitHub\\\\government-data-fun\\\\webapp\\\\static\\\\index.html\")",
+      "Bash(xargs cat *)"
+    ]
+  }
+}

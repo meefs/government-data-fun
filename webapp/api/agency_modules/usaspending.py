@@ -56,7 +56,7 @@ def search_spending(query, count=20):
 def get_federal_accounts(count=20):
     try:
         url = f"{BASE_URL}/federal_accounts/"
-        payload = {"sort": {"field": "budgetary_resources", "direction": "desc"}, "limit": count, "page": 1}
+        payload = {"sort": {"field": "budgetary_resources", "direction": "desc"}, "limit": min(count, 100), "page": 1}
         resp = requests.post(url, json=payload, headers=HEADERS, timeout=15)
         if resp.status_code == 200:
             data = resp.json()
@@ -74,14 +74,29 @@ def get_federal_accounts(count=20):
 def get_usaspending_data(api_key=None, params=None):
     sub = (params or {}).get('sub_section', 'top_agencies')
     query = (params or {}).get('query', '')
+    limit = (params or {}).get('limit', 100)
+
+    if query and sub in ('top_agencies', 'federal_accounts'):
+        # Filter within the current sub-section instead of switching to award search
+        mapping = {
+            'top_agencies': get_top_agencies,
+            'federal_accounts': get_federal_accounts,
+        }
+        fn = mapping.get(sub, mapping['top_agencies'])
+        all_results = fn(count=100)  # API max is 100 per page
+        q_lower = query.lower()
+        filtered = [r for r in all_results if q_lower in (r.get('title', '') + ' ' + r.get('description', '')).lower()]
+        return {"results": filtered[:limit], "source": "USAspending.gov", "endpoint": sub}
+
     if query:
-        return {"results": search_spending(query), "source": "USAspending.gov", "endpoint": "Award Search"}
+        return {"results": search_spending(query, count=limit), "source": "USAspending.gov", "endpoint": "Award Search"}
+
     mapping = {
         'top_agencies': get_top_agencies,
         'federal_accounts': get_federal_accounts,
     }
     fn = mapping.get(sub, mapping['top_agencies'])
-    return {"results": fn(), "source": "USAspending.gov", "endpoint": sub}
+    return {"results": fn(count=limit), "source": "USAspending.gov", "endpoint": sub}
 
 def get_metadata():
     return {

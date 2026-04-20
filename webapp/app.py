@@ -73,12 +73,15 @@ def get_agency_data(agency_id):
     api_key = request.args.get('api_key', '')
     sub_section = request.args.get('sub_section', '')
     query = request.args.get('query', '')
+    limit = request.args.get('limit', type=int)
 
     params = {}
     if sub_section:
         params['sub_section'] = sub_section
     if query:
         params['query'] = query
+    if limit:
+        params['limit'] = limit
 
     # Find the main data function
     func_name = f"get_{agency_id}_data"
@@ -95,6 +98,9 @@ def get_agency_data(agency_id):
 
     try:
         result = data_func(api_key=api_key, params=params)
+        # Apply limit to results if the module didn't handle it
+        if limit and isinstance(result, dict) and 'results' in result:
+            result['results'] = result['results'][:limit]
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
@@ -174,7 +180,20 @@ between agencies and explain regulatory relationships."""
         return jsonify({"reply": reply})
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        error_msg = str(e)
+        status_code = 500
+        if '429' in error_msg or 'quota' in error_msg.lower() or 'rate' in error_msg.lower():
+            is_project_key = api_key.startswith('sk-proj-') if api_key else False
+            if is_project_key:
+                error_msg = ('OpenAI quota exceeded. You are using a project-scoped key (sk-proj-...) '
+                           'which has its own budget limit. Either increase the project budget at '
+                           'platform.openai.com → Settings → Projects, switch to a personal key '
+                           '(starts with sk-), or add prepaid credits to your account.')
+            else:
+                error_msg = ('OpenAI quota exceeded. Check your billing at platform.openai.com → '
+                           'Settings → Billing. Newer accounts require prepaid credits before API use.')
+            status_code = 429
+        return jsonify({"error": error_msg}), status_code
 
 @app.route('/api/cross-reference', methods=['POST'])
 def cross_reference():

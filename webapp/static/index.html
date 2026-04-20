@@ -1281,7 +1281,11 @@ Free mode is active — no API key needed, just start chatting. For alternate pr
         </select>
         <div id="modal-key-section">
             <label id="modal-key-label">API Key</label>
-            <input id="modal-key-input" type="password" placeholder="Enter API key...">
+            <input id="modal-key-input" type="password" placeholder="Enter API key..." oninput="detectOpenAIKeyType()">
+            <div id="openai-key-type-info" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--border);background:var(--bg-primary);font-size:11px;line-height:1.5;">
+                <div id="openai-key-type-badge" style="margin-bottom:4px;font-weight:600;"></div>
+                <div id="openai-key-type-hint" style="color:var(--text-muted);"></div>
+            </div>
         </div>
         <label>data.gov API Key (optional, for enhanced access)</label>
         <input id="datagov-key-input" type="text" placeholder="Your data.gov API key">
@@ -1381,7 +1385,7 @@ let useDirectApi = false;  // Will be set to true if Flask backend unavailable
 // API state tracking - check if providers are configured
 const apiState = {
     free: { configured: true, name: 'Free Mode', needsKey: false, requiresSetup: false },
-    openai: { configured: false, name: 'OpenAI GPT-4o', needsKey: true, setupUrl: 'https://platform.openai.com/api-keys', setupSteps: ['Visit OpenAI API Keys page', 'Sign in or create account', 'Click "Create new secret key"', 'Copy the key and paste it here'] },
+    openai: { configured: false, name: 'OpenAI GPT-4o', needsKey: true, setupUrl: 'https://platform.openai.com/api-keys', setupSteps: ['Visit OpenAI API Keys page', 'Sign in or create account', 'Click "Create new secret key"', 'Choose a personal key (sk-...) for account-level billing, or a project key (sk-proj-...) if you have a project with its own budget', 'Ensure you have prepaid credits loaded (required for newer accounts)', 'Copy the key and paste it here'] },
     groq: { configured: false, name: 'Groq Llama 3', needsKey: true, setupUrl: 'https://console.groq.com/keys', setupSteps: ['Visit Groq Console', 'Sign up with email', 'Go to API Keys section', 'Copy key and paste it here'] },
     gemini: { configured: false, name: 'Google Gemini', needsKey: true, setupUrl: 'https://aistudio.google.com/app/apikey', setupSteps: ['Visit Google AI Studio', 'Sign in with Google account', 'Click "Create API key"', 'Copy and paste here (no credit card needed)'] },
     claude: { configured: false, name: 'Anthropic Claude', needsKey: true, setupUrl: 'https://console.anthropic.com/api', setupSteps: ['Visit Anthropic Console', 'Sign in or create account', 'Go to API Keys', 'Create and copy new key'] },
@@ -1685,7 +1689,7 @@ const DIRECT_API = {
             } catch (e) {
                 // Fall back to Flask backend if CORS fails
                 try {
-                    const r = await fetch(`${API_BASE}/api/bls?series=${sid}&start_year=${startYear}&end_year=${endYear}&limit=${lim}`);
+                    const r = await fetch(`${API_BASE}/api/data/bls?sub_section=${sub || 'unemployment'}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
                         return (d.data || []).map(x => ({
@@ -1771,7 +1775,7 @@ const DIRECT_API = {
                 } catch (e) {
                     // Fall back to Flask proxy
                     try {
-                        const r = await fetch(`${API_BASE}/api/nih/pubmed?q=${encodeURIComponent(q)}&limit=${lim}&date_min=${opts.dateFrom || ''}`);
+                        const r = await fetch(`${API_BASE}/api/data/nih?sub_section=pubmed&query=${encodeURIComponent(q)}&limit=${lim}`);
                         if (r.ok) {
                             const d = await r.json();
                             const result = d.data || {};
@@ -1837,7 +1841,7 @@ const DIRECT_API = {
             } catch (e) {
                 // Fall back to Flask proxy
                 try {
-                    const r = await fetch(`${API_BASE}/api/loc?q=${encodeURIComponent(q)}&limit=${lim}`);
+                    const r = await fetch(`${API_BASE}/api/data/loc?query=${encodeURIComponent(q)}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
                         const data = d.data || {};
@@ -1854,38 +1858,86 @@ const DIRECT_API = {
     usaspending: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
-            try {
-                // Try direct API with proxy fallback
-                const timePeriod = {start_date: opts.dateFrom || "2024-01-01", end_date: opts.dateTo || "2026-12-31"};
-                const payload = query
-                    ? {filters:{keywords:[query],time_period:[timePeriod]},fields:["Award ID","Recipient Name","Award Amount","Description","Start Date","Awarding Agency"],limit:lim, page:1, sort:"Award Amount", order:"desc"}
-                    : {filters:{}, limit:lim, page:1, fields:["Award ID","Recipient Name","Award Amount","Description","Start Date","Awarding Agency"]};
-
-                const r = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
-                    method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify(payload),
-                    signal: AbortSignal.timeout(5000)
-                });
-                if (r.ok) {
-                    const d = await r.json();
-                    return (d.results||[]).slice(0,lim).map(x => ({
-                        title: x['Recipient Name']||'Unknown', description: `Award: ${x['Award ID']||''} - ${(x.Description||'').substring(0,150)}`,
-                        date: x['Start Date']||'', link: `https://www.usaspending.gov/award/${x.internal_id||''}`, amount: x['Award Amount']
-                    }));
-                }
-            } catch (e) {
-                // Fall back to Flask proxy
+            // For top_agencies: use the toptier agencies endpoint
+            if (sub === 'top_agencies' || !sub) {
                 try {
-                    const r = await fetch(`${API_BASE}/api/usaspending?limit=${lim}`, {method:'POST'});
+                    const r = await fetch(`https://api.usaspending.gov/api/v2/references/toptier_agencies/`, {signal: AbortSignal.timeout(5000)});
                     if (r.ok) {
                         const d = await r.json();
-                        return (d.data||[]).map(x => ({
-                            title: x.recipient_name||'Unknown', description: `Amount: $${(x.federal_action_obligation||0).toLocaleString()}`,
-                            date: x.action_date||'', link: 'https://www.usaspending.gov/'
+                        let results = (d.results||[]).map(x => ({
+                            title: x.agency_name||'', description: `Budget: $${(x.budget_authority_amount||0).toLocaleString()} | Obligated: $${(x.obligated_amount||0).toLocaleString()}`,
+                            date: '', link: `https://www.usaspending.gov/agency/${x.agency_slug||''}`,
+                            budget: x.budget_authority_amount, obligated: x.obligated_amount, abbreviation: x.abbreviation
+                        }));
+                        if (query) {
+                            const q = query.toLowerCase();
+                            results = results.filter(x => (x.title + ' ' + x.description + ' ' + (x.abbreviation||'')).toLowerCase().includes(q));
+                        }
+                        return results.slice(0, lim);
+                    }
+                } catch (e) { /* fall through to Flask */ }
+            }
+            // For federal_accounts
+            if (sub === 'federal_accounts') {
+                try {
+                    const fetchLim = query ? 100 : lim; // API max is 100 per page
+                    const r = await fetch('https://api.usaspending.gov/api/v2/federal_accounts/', {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({sort:{field:"budgetary_resources",direction:"desc"},limit:fetchLim,page:1}),
+                        signal: AbortSignal.timeout(5000)
+                    });
+                    if (r.ok) {
+                        const d = await r.json();
+                        let results = (d.results||[]).map(x => ({
+                            title: x.account_name||'', description: `Agency: ${x.managing_agency||''} | Budget: $${(x.budgetary_resources||0).toLocaleString()}`,
+                            date: '', link: `https://www.usaspending.gov/federal_account/${x.account_number||''}`,
+                            budget: x.budgetary_resources
+                        }));
+                        if (query) {
+                            const q = query.toLowerCase();
+                            results = results.filter(x => (x.title + ' ' + x.description).toLowerCase().includes(q));
+                        }
+                        return results.slice(0, lim);
+                    }
+                } catch (e) { /* fall through to Flask */ }
+            }
+            // For search queries: use spending_by_award with proper filters
+            if (query) {
+                try {
+                    const timePeriod = {start_date: opts.dateFrom || "2024-01-01", end_date: opts.dateTo || "2026-12-31"};
+                    const payload = {
+                        filters:{keywords:[query],time_period:[timePeriod]},
+                        fields:["Award ID","Recipient Name","Award Amount","Description","Start Date","Awarding Agency"],
+                        limit:lim, page:1, sort:"Award Amount", order:"desc"
+                    };
+                    const r = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify(payload),
+                        signal: AbortSignal.timeout(8000)
+                    });
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.results||[]).slice(0,lim).map(x => ({
+                            title: x['Recipient Name']||'Unknown', description: `Award: ${x['Award ID']||''} - ${(x.Description||'').substring(0,150)}`,
+                            date: x['Start Date']||'', link: `https://www.usaspending.gov/award/${x.internal_id||''}`, amount: x['Award Amount']
                         }));
                     }
-                } catch (e2) { }
+                } catch (e) { /* fall through to Flask */ }
             }
+            // Flask backend fallback
+            try {
+                const params = new URLSearchParams({sub_section: sub || 'top_agencies', limit: lim});
+                if (query) params.set('query', query);
+                const r = await fetch(`${API_BASE}/api/data/usaspending?${params}`);
+                if (r.ok) {
+                    const d = await r.json();
+                    return (d.results||[]).map(x => ({
+                        title: x.title||'', description: x.description||'',
+                        date: x.date||'', link: x.link||'https://www.usaspending.gov/',
+                        budget: x.budget, amount: x.amount
+                    }));
+                }
+            } catch (e2) { }
             return [{title: 'USAspending Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.usaspending.gov/'}];
         }
     },
@@ -1935,7 +1987,7 @@ const DIRECT_API = {
             const lim = opts.limit || 20;
             try {
                 // DOJ data via Flask backend (direct API unreliable)
-                const r = await fetch(`${API_BASE}/api/doj?limit=${lim}`, {signal: AbortSignal.timeout(5000)});
+                const r = await fetch(`${API_BASE}/api/data/doj?limit=${lim}`, {signal: AbortSignal.timeout(5000)});
                 if (r.ok) {
                     const d = await r.json();
                     if (d.status === 'success' && d.data && d.data.length > 0) {
@@ -1966,7 +2018,7 @@ const DIRECT_API = {
             try {
                 // Try Flask backend first (NHTSA API has strict access controls)
                 const endpoint = sub === 'complaints' ? 'complaints' : 'recalls';
-                const r = await fetch(`${API_BASE}/api/dot/${endpoint}?limit=${lim}`, {signal: AbortSignal.timeout(5000)});
+                const r = await fetch(`${API_BASE}/api/data/dot?sub_section=${sub || 'recalls'}&limit=${lim}`, {signal: AbortSignal.timeout(5000)});
                 if (r.ok) {
                     const d = await r.json();
                     if (d.status === 'success' && d.data && d.data.length > 0) {
@@ -2006,7 +2058,7 @@ const DIRECT_API = {
                 // Final fallback
                 try {
                     const endpoint = sub === 'complaints' ? 'complaints' : 'recalls';
-                    const r = await fetch(`${API_BASE}/api/dot/${endpoint}?limit=${lim}`);
+                    const r = await fetch(`${API_BASE}/api/data/dot?sub_section=${endpoint}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
                         return (d.data || []).map(x => ({
@@ -2024,7 +2076,7 @@ const DIRECT_API = {
             const lim = opts.limit || 20;
             try {
                 // EPA data primarily via Flask backend for reliability
-                const r = await fetch(`${API_BASE}/api/epa?sub=${sub || 'tri'}&limit=${lim}`, {signal: AbortSignal.timeout(5000)});
+                const r = await fetch(`${API_BASE}/api/data/epa?sub_section=${sub || 'tri'}&limit=${lim}`, {signal: AbortSignal.timeout(5000)});
                 if (r.ok) {
                     const d = await r.json();
                     if (d.status === 'success' && d.data && d.data.length > 0) {
@@ -2072,7 +2124,7 @@ const DIRECT_API = {
             } catch (e) {
                 // Fall back to proxy
                 try {
-                    const r = await fetch(`${API_BASE}/api/sam?key=${key}&limit=${lim}&q=${encodeURIComponent(query || '')}`);
+                    const r = await fetch(`${API_BASE}/api/data/sam?sub_section=opportunities&query=${encodeURIComponent(query || '')}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
                         return (d.data || []).map(x => ({
@@ -2104,7 +2156,7 @@ const DIRECT_API = {
             } catch (e) {
                 // Fall back to proxy
                 try {
-                    const r = await fetch(`${API_BASE}/api/ftc?limit=${lim}`);
+                    const r = await fetch(`${API_BASE}/api/data/ftc?limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
                         return (d.data || []).map(x => ({
@@ -2135,7 +2187,7 @@ const DIRECT_API = {
             } catch (e) {
                 // Fall back to proxy
                 try {
-                    const r = await fetch(`${API_BASE}/api/nara?q=${encodeURIComponent(q)}&limit=${lim}`);
+                    const r = await fetch(`${API_BASE}/api/data/nara?query=${encodeURIComponent(q)}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
                         return (d.data || []).map(x => ({
@@ -2947,9 +2999,9 @@ function buildFetchControlsHtml() {
     </div>`;
 }
 
-function updateFetchLimit(val) { fetchLimit = parseInt(val) || 20; }
-function updateFetchDateFrom(val) { fetchDateFrom = val; }
-function updateFetchDateTo(val) { fetchDateTo = val; }
+function updateFetchLimit(val) { fetchLimit = parseInt(val) || 20; if (agencyViewMode === 'data') fetchAgencyData(document.getElementById('agency-search')?.value?.trim() || undefined); }
+function updateFetchDateFrom(val) { fetchDateFrom = val; if (agencyViewMode === 'data') fetchAgencyData(document.getElementById('agency-search')?.value?.trim() || undefined); }
+function updateFetchDateTo(val) { fetchDateTo = val; if (agencyViewMode === 'data') fetchAgencyData(document.getElementById('agency-search')?.value?.trim() || undefined); }
 function resetFetchControls() {
     fetchLimit = 20; fetchDateFrom = ''; fetchDateTo = '';
     const el = document.getElementById('fc-limit'); if (el) el.value = '20';
@@ -3571,6 +3623,43 @@ function buildMessages(msg) {
     return messages;
 }
 
+// Standalone fallback callers for auto-retry on 429
+async function callAI_free(messages) {
+    const freeModels = [
+        'Qwen/Qwen2.5-72B-Instruct',
+        'mistralai/Mixtral-8x7B-Instruct-v0.1',
+        'meta-llama/Meta-Llama-3-8B-Instruct'
+    ];
+    for (const model of freeModels) {
+        try {
+            const url = `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`;
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model, messages, max_tokens: 1500, temperature: 0.7 })
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.choices?.[0]) return data;
+            }
+        } catch (e) { /* try next */ }
+    }
+    return null;
+}
+
+async function callAI_groq(messages) {
+    if (!groqKey) return null;
+    try {
+        const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${groqKey}`},
+            body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages, max_tokens:2000, temperature:0.7 })
+        });
+        if (resp.ok) return await resp.json();
+    } catch (e) { /* fall through */ }
+    return null;
+}
+
 async function callAI(messages) {
     const provider = aiProvider;
 
@@ -3628,7 +3717,37 @@ async function callAI(messages) {
             });
             if (!resp.ok) {
                 const errData = await resp.json().catch(() => ({}));
-                return { error: { message: `OpenAI ${resp.status}: ${errData?.error?.message || resp.statusText}` } };
+                const errMsg = errData?.error?.message || resp.statusText;
+                if (resp.status === 429) {
+                    console.warn('[OpenGovDash] OpenAI 429 — falling back to free provider');
+                    // Auto-fallback to free provider
+                    const fallbackResult = await callAI_free(messages);
+                    if (fallbackResult) {
+                        fallbackResult._fallback = true;
+                        fallbackResult._fallbackReason = errMsg;
+                        return fallbackResult;
+                    }
+                    // If fallback also failed, try Groq if configured
+                    if (groqKey) {
+                        console.warn('[OpenGovDash] Free fallback failed — trying Groq');
+                        const groqResult = await callAI_groq(messages);
+                        if (groqResult && !groqResult.error) {
+                            groqResult._fallback = true;
+                            groqResult._fallbackReason = errMsg;
+                            return groqResult;
+                        }
+                    }
+                    const isProjectKey = openaiKey.startsWith('sk-proj-');
+                    let advice = 'OpenAI rate limited (429). ';
+                    if (isProjectKey) {
+                        advice += 'Project keys (sk-proj-...) often have strict per-minute limits. Try a personal key, or increase your project rate limits at platform.openai.com → Settings → Projects → Limits.';
+                    } else {
+                        advice += 'New accounts start at Tier 1 with low rate limits. Your tier increases automatically as you spend more. See platform.openai.com → Settings → Limits.';
+                    }
+                    advice += ' Free fallback models were also unavailable.';
+                    return { error: { message: advice } };
+                }
+                return { error: { message: `OpenAI ${resp.status}: ${errMsg}` } };
             }
             return await resp.json();
         } catch (fetchErr) {
@@ -3698,7 +3817,7 @@ async function sendChat() {
     }
 
     input.value = '';
-    appendChat('user', msg);
+    appendChat('user', msg, {noHistory: true}); // show in UI, but don't add to history yet
     const typingId = 'typing-' + Date.now();
     appendTyping(typingId);
 
@@ -3708,17 +3827,22 @@ async function sendChat() {
         removeTyping(typingId);
 
         if (data.error) {
-            appendChat('assistant', `Error: ${data.error.message || JSON.stringify(data.error)}`);
+            appendChat('assistant', `Error: ${data.error.message || JSON.stringify(data.error)}`, {noHistory: true});
+            // Don't persist user msg or error in history — so retries stay clean
         } else {
+            // Success — now persist both user msg and response in history
+            chatHistory.push({role:'user', content: msg});
             const providerNames = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
-            const providerTag = `[${providerNames[aiProvider] || aiProvider}]`;
+            let providerTag = `[${providerNames[aiProvider] || aiProvider}]`;
+            if (data._fallback) {
+                providerTag = `[Fallback — OpenAI rate limited]`;
+            }
             const content = data.choices?.[0]?.message?.content || 'No response';
-            // Display with tag, but store clean content in history
             appendChat('assistant', `${providerTag} ${content}`, {historyContent: content});
         }
     } catch (e) {
         removeTyping(typingId);
-        appendChat('assistant', `Error: ${e.message}`);
+        appendChat('assistant', `Error: ${e.message}`, {noHistory: true});
     }
 }
 
@@ -3805,6 +3929,38 @@ function modalProviderChange() {
         const statusBadge = existingKey ? ' <span style="color:var(--accent-success, #10b981);font-size:11px;margin-left:6px;">✓ Configured</span>' : '';
         keyLabel.innerHTML = (labels[provider] || 'API Key') + statusBadge;
         keyInput.placeholder = placeholders[provider] || 'Enter API key...';
+    }
+    detectOpenAIKeyType();
+}
+
+function detectOpenAIKeyType() {
+    const provider = document.getElementById('modal-provider-select').value;
+    const infoDiv = document.getElementById('openai-key-type-info');
+    if (provider !== 'openai') { infoDiv.style.display = 'none'; return; }
+
+    const key = (document.getElementById('modal-key-input').value || '').trim();
+    const badge = document.getElementById('openai-key-type-badge');
+    const hint = document.getElementById('openai-key-type-hint');
+
+    if (!key) { infoDiv.style.display = 'none'; return; }
+
+    infoDiv.style.display = 'block';
+    if (key.startsWith('sk-proj-')) {
+        badge.innerHTML = '⚠ Project-scoped key detected';
+        badge.style.color = '#f59e0b';
+        hint.innerHTML = 'Project keys have their own budget limits separate from your account. If you get quota errors, check your <a href="https://platform.openai.com/settings/organization/projects" target="_blank" style="color:var(--accent);">project budget</a> or use a personal key instead (starts with <code>sk-</code>, not <code>sk-proj-</code>).';
+    } else if (key.startsWith('sk-svcacct-')) {
+        badge.innerHTML = '⚙ Service account key detected';
+        badge.style.color = 'var(--accent)';
+        hint.textContent = 'Service account key — uses the project\'s budget. Check project spending limits if you get quota errors.';
+    } else if (key.startsWith('sk-')) {
+        badge.innerHTML = '✓ Personal / org-level key detected';
+        badge.style.color = 'var(--accent-success, #10b981)';
+        hint.innerHTML = 'Uses your account-level billing. If you get quota errors, check your <a href="https://platform.openai.com/settings/organization/billing" target="_blank" style="color:var(--accent);">billing &amp; credits</a>.';
+    } else {
+        badge.innerHTML = '? Unrecognized key format';
+        badge.style.color = 'var(--text-muted)';
+        hint.textContent = 'OpenAI keys usually start with sk-... — double-check that you copied the full key.';
     }
 }
 
