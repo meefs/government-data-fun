@@ -1364,7 +1364,12 @@ function svgIcon(name, size = 16) {
     };
     return icons[name] || icons['doc'];
 }
-const API_BASE = '';  // Same origin for Flask backend
+const API_BASE = '';  // Same origin for Flask backend (self-hosters)
+// Cloudflare Worker CORS proxy for agencies whose upstreams don't send CORS headers.
+// See proxy/worker.js. Override via window.__OGD_PROXY__ in a fork.
+const PROXY_BASE = window.__OGD_PROXY__ || 'https://opengov-proxy.psjs.workers.dev/p';
+// True when served from a static host (GitHub Pages / selvidge.tech). No Flask backend available.
+const IS_STATIC_HOST = location.protocol === 'https:' && !/^(localhost|127\.0\.0\.1)/.test(location.hostname);
 let agencies = [];
 let currentAgency = null;
 let currentSubSection = '';
@@ -1462,6 +1467,27 @@ async function corsFetch(url, options = {}) {
         const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
         return fetch(proxyUrl, options);
     }
+}
+
+// Rewrite a direct upstream URL to go through the Cloudflare Worker proxy.
+// Example: proxyUrl('bls', 'https://api.bls.gov/publicAPI/v2/timeseries/data/')
+//   -> 'https://opengov-proxy.psjs.workers.dev/p/bls/publicAPI/v2/timeseries/data/'
+function proxyUrl(slug, directUrl) {
+    const u = new URL(directUrl);
+    return `${PROXY_BASE}/${slug}${u.pathname}${u.search}`;
+}
+
+// Fetch via the Worker proxy. Agencies call this on CORS failure when IS_STATIC_HOST.
+async function proxyFetch(slug, directUrl, options = {}) {
+    return fetch(proxyUrl(slug, directUrl), options);
+}
+
+// Choose the CORS-fallback URL for an agency: Worker on static hosts, Flask backend locally.
+// `flaskRoute` is the path after API_BASE (e.g., '/api/data/bls?...').
+// `directUrl` is the direct-upstream URL to pass to the Worker.
+// `slug` is the Worker slug (e.g., 'bls').
+function fallbackUrl(slug, directUrl, flaskRoute) {
+    return IS_STATIC_HOST ? proxyUrl(slug, directUrl) : `${API_BASE}${flaskRoute}`;
 }
 
 // ========== CLIENT-SIDE DIRECT API LAYER ==========
@@ -1671,38 +1697,39 @@ const DIRECT_API = {
             const year = new Date().getFullYear();
             const startYear = opts.dateFrom ? parseInt(opts.dateFrom.split('-')[0]) : year - 3;
             const endYear = opts.dateTo ? parseInt(opts.dateTo.split('-')[0]) : year;
+            const payload = JSON.stringify({seriesid:[sid], startyear:String(startYear), endyear:String(endYear)});
+            const parseBls = (d) => {
+                const series = (d.Results?.series?.[0]?.data || []).slice(0, lim);
+                return series.map(x => ({
+                    title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
+                    date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
+                }));
+            };
             try {
-                // Try direct API first
                 const r = await fetch('https://api.bls.gov/publicAPI/v2/timeseries/data/', {
-                    method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({seriesid:[sid], startyear:String(startYear), endyear:String(endYear)}),
+                    method:'POST', headers:{'Content-Type':'application/json'}, body: payload,
                     signal: AbortSignal.timeout(5000)
                 });
+                if (r.ok) return parseBls(await r.json());
+            } catch (e) { /* fall through to proxy/backend */ }
+            try {
+                const url = IS_STATIC_HOST
+                    ? `${PROXY_BASE}/bls/publicAPI/v2/timeseries/data/`
+                    : `${API_BASE}/api/data/bls?sub_section=${sub || 'unemployment'}&limit=${lim}`;
+                const r = await fetch(url, IS_STATIC_HOST
+                    ? { method:'POST', headers:{'Content-Type':'application/json'}, body: payload }
+                    : {});
                 if (r.ok) {
                     const d = await r.json();
-                    const series = (d.Results?.series?.[0]?.data || []).slice(0, lim);
-                    return series.map(x => ({
+                    return IS_STATIC_HOST ? parseBls(d) : (d.data || []).map(x => ({
                         title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
                         date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
                     }));
                 }
-            } catch (e) {
-                // Fall back to Flask backend if CORS fails
-                try {
-                    const r = await fetch(`${API_BASE}/api/data/bls?sub_section=${sub || 'unemployment'}&limit=${lim}`);
-                    if (r.ok) {
-                        const d = await r.json();
-                        return (d.data || []).map(x => ({
-                            title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
-                            date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
-                        }));
-                    }
-                } catch (e2) { }
-            }
-            // Return empty with message if both fail
+            } catch (e2) { }
             return [{
                 title: `${name}: Data Unavailable`,
-                description: 'BLS API requires backend proxy. Run Flask backend for full access.',
+                description: 'BLS API is temporarily unreachable. Try again shortly.',
                 date: '', link: 'https://www.bls.gov/data/'
             }];
         }
@@ -1752,41 +1779,56 @@ const DIRECT_API = {
             const lim = opts.limit || 20;
             if (sub === 'pubmed') {
                 const q = query || 'health';
-                try {
-                    let dateFilter = '';
-                    if (opts.dateFrom) dateFilter += `&mindate=${opts.dateFrom.replace(/-/g,'/')}&datetype=edat`;
-                    if (opts.dateTo) dateFilter += `&maxdate=${opts.dateTo.replace(/-/g,'/')}`;
-                    const r = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${q}&retmax=${lim}&retmode=json&sort=date${dateFilter}`, {signal: AbortSignal.timeout(5000)});
-                    if (r.ok) {
-                        const d = await r.json();
-                        const ids = d.esearchresult?.idlist || [];
-                        if (ids.length) {
-                            const r2 = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${ids.join(',')}&retmode=json`);
-                            if (r2.ok) {
-                                const d2 = await r2.json();
-                                return ids.filter(id => d2.result?.[id]?.title).map(id => {
-                                    const a = d2.result[id];
-                                    return { title: a.title, description: `Authors: ${(a.authors||[]).slice(0,3).map(x=>x.name).join(', ')} | Journal: ${a.source||''}`,
-                                        date: a.pubdate || '', link: `https://pubmed.ncbi.nlm.nih.gov/${id}/` };
-                                });
-                            }
-                        }
-                    }
-                } catch (e) {
-                    // Fall back to Flask proxy
+                let dateFilter = '';
+                if (opts.dateFrom) dateFilter += `&mindate=${opts.dateFrom.replace(/-/g,'/')}&datetype=edat`;
+                if (opts.dateTo) dateFilter += `&maxdate=${opts.dateTo.replace(/-/g,'/')}`;
+                const directSearch = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${q}&retmax=${lim}&retmode=json&sort=date${dateFilter}`;
+                const fetchSearch = async () => {
                     try {
-                        const r = await fetch(`${API_BASE}/api/data/nih?sub_section=pubmed&query=${encodeURIComponent(q)}&limit=${lim}`);
-                        if (r.ok) {
-                            const d = await r.json();
-                            const result = d.data || {};
-                            return Object.values(result).filter(x => x.title).slice(0, lim).map(x => ({
-                                title: x.title || '', description: (x.abstract || '').substring(0,300),
-                                date: x.pubdate || '', link: `https://pubmed.ncbi.nlm.nih.gov/${x.uid}/`
-                            }));
-                        }
-                    } catch (e2) { }
+                        const r = await fetch(directSearch, {signal: AbortSignal.timeout(5000)});
+                        if (r.ok) return r.json();
+                    } catch {}
+                    if (IS_STATIC_HOST) {
+                        const r = await fetch(proxyUrl('nih_pubmed', directSearch));
+                        if (r.ok) return r.json();
+                    }
+                    return null;
+                };
+                const d = await fetchSearch();
+                const ids = d?.esearchresult?.idlist || [];
+                if (!ids.length) {
+                    if (!IS_STATIC_HOST) {
+                        try {
+                            const r = await fetch(`${API_BASE}/api/data/nih?sub_section=pubmed&query=${encodeURIComponent(q)}&limit=${lim}`);
+                            if (r.ok) {
+                                const d2 = await r.json();
+                                return Object.values(d2.data || {}).filter(x => x.title).slice(0, lim).map(x => ({
+                                    title: x.title || '', description: (x.abstract || '').substring(0,300),
+                                    date: x.pubdate || '', link: `https://pubmed.ncbi.nlm.nih.gov/${x.uid}/`
+                                }));
+                            }
+                        } catch {}
+                    }
+                    return [];
                 }
-                return [];
+                const directSummary = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${ids.join(',')}&retmode=json`;
+                let d2 = null;
+                try {
+                    const r = await fetch(directSummary, {signal: AbortSignal.timeout(5000)});
+                    if (r.ok) d2 = await r.json();
+                } catch {}
+                if (!d2 && IS_STATIC_HOST) {
+                    try {
+                        const r = await fetch(proxyUrl('nih_pubmed', directSummary));
+                        if (r.ok) d2 = await r.json();
+                    } catch {}
+                }
+                if (!d2) return [];
+                return ids.filter(id => d2.result?.[id]?.title).map(id => {
+                    const a = d2.result[id];
+                    return { title: a.title, description: `Authors: ${(a.authors||[]).slice(0,3).map(x=>x.name).join(', ')} | Journal: ${a.source||''}`,
+                        date: a.pubdate || '', link: `https://pubmed.ncbi.nlm.nih.gov/${id}/` };
+                });
             }
             let url = `https://clinicaltrials.gov/api/v2/studies?pageSize=${lim}&sort=LastUpdatePostDate:desc`;
             if (query) url += `&query.term=${encodeURIComponent(query)}`;
@@ -1828,31 +1870,32 @@ const DIRECT_API = {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
             const q = query || 'government';
+            const directUrl = `https://www.loc.gov/search/?q=${encodeURIComponent(q)}&fo=json&c=${lim}`;
+            const parseDirect = (d) => (d.results || []).map(x => ({
+                title: x.title || (Array.isArray(x.description) ? x.description[0] : ''),
+                description: (Array.isArray(x.description) ? x.description[0] : (x.description || '')).substring(0,300),
+                date: x.date || '', link: x.url || x.id || ''
+            }));
             try {
-                const r = await fetch(`https://www.loc.gov/search/?q=${encodeURIComponent(q)}&fo=json&c=${lim}`, {signal: AbortSignal.timeout(5000)});
-                if (r.ok) {
-                    const d = await r.json();
-                    return (d.results || []).map(x => ({
-                        title: x.title || (Array.isArray(x.description) ? x.description[0] : ''),
-                        description: (Array.isArray(x.description) ? x.description[0] : (x.description || '')).substring(0,300),
-                        date: x.date || '', link: x.url || x.id || ''
-                    }));
-                }
-            } catch (e) {
-                // Fall back to Flask proxy
-                try {
+                const r = await fetch(directUrl, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) return parseDirect(await r.json());
+            } catch {}
+            try {
+                if (IS_STATIC_HOST) {
+                    const r = await fetch(proxyUrl('loc', directUrl));
+                    if (r.ok) return parseDirect(await r.json());
+                } else {
                     const r = await fetch(`${API_BASE}/api/data/loc?query=${encodeURIComponent(q)}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
-                        const data = d.data || {};
-                        return (data.results || []).map(x => ({
+                        return (d.data?.results || []).map(x => ({
                             title: x.title || '', description: (x.description || '').substring(0,300),
                             date: x.date || '', link: x.url || ''
                         }));
                     }
-                } catch (e2) { }
-            }
-            return [{title: 'LOC Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.loc.gov/'}];
+                }
+            } catch {}
+            return [{title: 'LOC Data Unavailable', description: 'Library of Congress API is temporarily unreachable.', date: '', link: 'https://www.loc.gov/'}];
         }
     },
     usaspending: {
@@ -1924,21 +1967,42 @@ const DIRECT_API = {
                     }
                 } catch (e) { /* fall through to Flask */ }
             }
-            // Flask backend fallback
-            try {
-                const params = new URLSearchParams({sub_section: sub || 'top_agencies', limit: lim});
-                if (query) params.set('query', query);
-                const r = await fetch(`${API_BASE}/api/data/usaspending?${params}`);
-                if (r.ok) {
-                    const d = await r.json();
-                    return (d.results||[]).map(x => ({
-                        title: x.title||'', description: x.description||'',
-                        date: x.date||'', link: x.link||'https://www.usaspending.gov/',
-                        budget: x.budget, amount: x.amount
-                    }));
-                }
-            } catch (e2) { }
-            return [{title: 'USAspending Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.usaspending.gov/'}];
+            // Final fallback: Worker proxy on static hosts (retries the same upstream), Flask locally.
+            if (IS_STATIC_HOST) {
+                try {
+                    if (sub === 'top_agencies' || !sub) {
+                        const r = await fetch(proxyUrl('usaspending', 'https://api.usaspending.gov/api/v2/references/toptier_agencies/'));
+                        if (r.ok) {
+                            const d = await r.json();
+                            let results = (d.results||[]).map(x => ({
+                                title: x.agency_name||'', description: `Budget: $${(x.budget_authority_amount||0).toLocaleString()} | Obligated: $${(x.obligated_amount||0).toLocaleString()}`,
+                                date: '', link: `https://www.usaspending.gov/agency/${x.agency_slug||''}`,
+                                budget: x.budget_authority_amount, obligated: x.obligated_amount, abbreviation: x.abbreviation
+                            }));
+                            if (query) {
+                                const q = query.toLowerCase();
+                                results = results.filter(x => (x.title + ' ' + x.description + ' ' + (x.abbreviation||'')).toLowerCase().includes(q));
+                            }
+                            return results.slice(0, lim);
+                        }
+                    }
+                } catch {}
+            } else {
+                try {
+                    const params = new URLSearchParams({sub_section: sub || 'top_agencies', limit: lim});
+                    if (query) params.set('query', query);
+                    const r = await fetch(`${API_BASE}/api/data/usaspending?${params}`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.results||[]).map(x => ({
+                            title: x.title||'', description: x.description||'',
+                            date: x.date||'', link: x.link||'https://www.usaspending.gov/',
+                            budget: x.budget, amount: x.amount
+                        }));
+                    }
+                } catch {}
+            }
+            return [{title: 'USAspending Data Unavailable', description: 'USAspending API is temporarily unreachable. Try again shortly.', date: '', link: 'https://www.usaspending.gov/'}];
         }
     },
     nist: {
@@ -1985,43 +2049,68 @@ const DIRECT_API = {
     doj: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
-            try {
-                // DOJ data via Flask backend (direct API unreliable)
-                const r = await fetch(`${API_BASE}/api/data/doj?limit=${lim}`, {signal: AbortSignal.timeout(5000)});
-                if (r.ok) {
-                    const d = await r.json();
-                    if (d.status === 'success' && d.data && d.data.length > 0) {
-                        return (d.data || []).map(x => ({
-                            title: x.title || x.name || 'DOJ Record',
-                            description: (x.description || x.excerpt || '').substring(0,300),
-                            date: x.date || x.publish_date || '',
-                            link: x.url || x.link || 'https://www.justice.gov/'
-                        }));
-                    }
-                }
-            } catch (e) {
-                // Fall back to direct API as secondary option
+            const typeMap = { press_releases:'press_releases', blog:'blog_entries', speeches:'speeches', news:'all_news_posts' };
+            const feed = typeMap[sub] || 'press_releases';
+            const directUrl = `https://www.justice.gov/api/v1/${feed}.json?pagesize=${lim}&sort=-date`;
+            const parseDoj = (d) => {
+                const items = d.results || d.data || d || [];
+                return (Array.isArray(items) ? items : []).slice(0, lim).map(x => ({
+                    title: x.title || x.name || 'DOJ Record',
+                    description: (x.body?.summary || x.description || x.excerpt || '').replace(/<[^>]*>/g, '').substring(0,300),
+                    date: x.date || x.publish_date || x.created || '',
+                    link: x.url || (x.path ? `https://www.justice.gov${x.path}` : 'https://www.justice.gov/')
+                }));
+            };
+            if (IS_STATIC_HOST) {
                 try {
-                    const r = await fetch(`https://data.gov/api/catalogs`, {signal: AbortSignal.timeout(3000)});
+                    const r = await fetch(proxyUrl('doj', directUrl));
+                    if (r.ok) return parseDoj(await r.json());
+                } catch {}
+            } else {
+                try {
+                    const r = await fetch(`${API_BASE}/api/data/doj?sub_section=${sub || 'press_releases'}&limit=${lim}`, {signal: AbortSignal.timeout(8000)});
                     if (r.ok) {
-                        // If data.gov API works, return placeholder
-                        return [{title: 'DOJ Records', description: 'Available via Flask backend', date: '', link: 'https://www.justice.gov/'}];
+                        const d = await r.json();
+                        if (d.data?.length) return parseDoj(d);
                     }
-                } catch (e2) { }
+                } catch {}
             }
-            return [{title: 'DOJ Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.justice.gov/'}];
+            return [{title: 'DOJ Data Unavailable', description: 'DOJ API is temporarily unreachable.', date: '', link: 'https://www.justice.gov/'}];
         }
     },
     dot: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
+            const isComplaints = sub === 'complaints';
+            const directUrl = isComplaints
+                ? `https://api.nhtsa.gov/complaints?pagesize=${lim}&format=json`
+                : `https://api.nhtsa.gov/recalls/recallsearch?pageindex=0&resultsperpage=${lim}&format=json`;
+            const parseDot = (d) => {
+                const rows = d.results || [];
+                return isComplaints
+                    ? rows.slice(0, lim).map(x => ({
+                        title: (x.complaint_text || '').substring(0,80) || 'Safety Complaint',
+                        description: `${x.vehicle_make || ''} ${x.vehicle_year || ''} | ${(x.complaint_text || '').substring(0,200)}`,
+                        date: x.complaint_date || '', link: 'https://www.nhtsa.gov/'
+                    }))
+                    : rows.slice(0, lim).map(x => ({
+                        title: `${x.Make || ''} ${x.ModelYear || ''} - ${x.Component || ''}`,
+                        description: (x.Summary || '').substring(0,300),
+                        date: x.ReportReceivedDate || '', link: 'https://www.nhtsa.gov/recalls'
+                    }));
+            };
             try {
-                // Try Flask backend first (NHTSA API has strict access controls)
-                const endpoint = sub === 'complaints' ? 'complaints' : 'recalls';
-                const r = await fetch(`${API_BASE}/api/data/dot?sub_section=${sub || 'recalls'}&limit=${lim}`, {signal: AbortSignal.timeout(5000)});
-                if (r.ok) {
-                    const d = await r.json();
-                    if (d.status === 'success' && d.data && d.data.length > 0) {
+                const r = await fetch(directUrl, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) return parseDot(await r.json());
+            } catch {}
+            try {
+                if (IS_STATIC_HOST) {
+                    const r = await fetch(proxyUrl('dot', directUrl));
+                    if (r.ok) return parseDot(await r.json());
+                } else {
+                    const r = await fetch(`${API_BASE}/api/data/dot?sub_section=${sub || 'recalls'}&limit=${lim}`);
+                    if (r.ok) {
+                        const d = await r.json();
                         return (d.data || []).map(x => ({
                             title: x.title || x.component || 'DOT Record',
                             description: (x.description || x.summary || '').substring(0,300),
@@ -2029,57 +2118,38 @@ const DIRECT_API = {
                         }));
                     }
                 }
-
-                // Fallback: try direct API (may be blocked)
-                if (sub === 'complaints' || (!sub && query)) {
-                    const url = `https://api.nhtsa.gov/complaints?pagesize=${lim}&format=json`;
-                    const r2 = await fetch(url, {signal: AbortSignal.timeout(3000)});
-                    if (r2.ok) {
-                        const d = await r2.json();
-                        return (d.results || []).map(x => ({
-                            title: x.complaint_text?.substring(0,80) || 'Safety Complaint',
-                            description: `${x.vehicle_make} ${x.vehicle_year} | ${(x.complaint_text || '').substring(0,200)}`,
-                            date: x.complaint_date || '', link: 'https://www.nhtsa.gov/'
-                        }));
-                    }
-                } else {
-                    const url = `https://api.nhtsa.gov/recalls/recallsearch?pageindex=0&resultsperpage=${lim}&format=json`;
-                    const r2 = await fetch(url, {signal: AbortSignal.timeout(3000)});
-                    if (r2.ok) {
-                        const d = await r2.json();
-                        return (d.results || []).map(x => ({
-                            title: `${x.Make} ${x.ModelYear} - ${x.Component}`,
-                            description: (x.Summary || '').substring(0,300),
-                            date: x.ReportReceivedDate || '', link: 'https://www.nhtsa.gov/recalls'
-                        }));
-                    }
-                }
-            } catch (e) {
-                // Final fallback
-                try {
-                    const endpoint = sub === 'complaints' ? 'complaints' : 'recalls';
-                    const r = await fetch(`${API_BASE}/api/data/dot?sub_section=${endpoint}&limit=${lim}`);
-                    if (r.ok) {
-                        const d = await r.json();
-                        return (d.data || []).map(x => ({
-                            title: x.title || '', description: x.description || '',
-                            date: x.date || '', link: 'https://www.nhtsa.gov/'
-                        }));
-                    }
-                } catch (e2) { }
-            }
-            return [{title: 'DOT Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.nhtsa.gov/'}];
+            } catch {}
+            return [{title: 'DOT Data Unavailable', description: 'NHTSA API is temporarily unreachable.', date: '', link: 'https://www.nhtsa.gov/'}];
         }
     },
     epa: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
+            // EPA Envirofacts REST — table names per sub_section.
+            const tableMap = { water_systems:'WATER_SYSTEM', facilities:'FRS_FACILITY_SITE', toxic_releases:'TRI_FACILITY' };
+            const table = tableMap[sub] || 'TRI_FACILITY';
+            const directUrl = `https://data.epa.gov/efservice/${table}/ROWS/0:${lim}/JSON`;
+            const parseEpa = (rows) => {
+                if (!Array.isArray(rows)) return [];
+                return rows.slice(0, lim).map(x => ({
+                    title: x.FACILITY_NAME || x.PWS_NAME || x.NAME || `${table} record`,
+                    description: [x.CITY_NAME, x.STATE_CODE, x.PWS_TYPE_CODE, x.INDUSTRY_SECTOR].filter(Boolean).join(' | ').substring(0, 300),
+                    date: x.LAST_REPORTED_DATE || x.FACILITY_UPDATE_DATE || '',
+                    link: 'https://www.epa.gov/'
+                }));
+            };
             try {
-                // EPA data primarily via Flask backend for reliability
-                const r = await fetch(`${API_BASE}/api/data/epa?sub_section=${sub || 'tri'}&limit=${lim}`, {signal: AbortSignal.timeout(5000)});
-                if (r.ok) {
-                    const d = await r.json();
-                    if (d.status === 'success' && d.data && d.data.length > 0) {
+                const r = await fetch(directUrl, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) return parseEpa(await r.json());
+            } catch {}
+            try {
+                if (IS_STATIC_HOST) {
+                    const r = await fetch(proxyUrl('epa', directUrl));
+                    if (r.ok) return parseEpa(await r.json());
+                } else {
+                    const r = await fetch(`${API_BASE}/api/data/epa?sub_section=${sub || 'toxic_releases'}&limit=${lim}`);
+                    if (r.ok) {
+                        const d = await r.json();
                         return (d.data || []).map(x => ({
                             title: x.name || x.facility_name || 'EPA Record',
                             description: (x.description || x.location || '').substring(0,300),
@@ -2087,75 +2157,78 @@ const DIRECT_API = {
                         }));
                     }
                 }
-            } catch (e) {
-                // Fall back to direct Envirofacts API as secondary
-                try {
-                    let url = 'https://data.epa.gov/api/3/action/datastore_search?resource_id=';
-                    const resourceId = sub === 'water' ? 'water-system-id' : 'tri-data-id';
-                    const r = await fetch(`${url}${resourceId}&limit=${lim}`, {signal: AbortSignal.timeout(3000)});
-                    if (r.ok) {
-                        const d = await r.json();
-                        return (d.result?.records || []).map(x => ({
-                            title: x.name || 'EPA Record',
-                            description: (x.description || '').substring(0,300),
-                            date: x.date || '', link: 'https://www.epa.gov/'
-                        }));
-                    }
-                } catch (e2) { }
-            }
-            return [{title: 'EPA Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.epa.gov/'}];
+            } catch {}
+            return [{title: 'EPA Data Unavailable', description: 'EPA Envirofacts is temporarily unreachable.', date: '', link: 'https://www.epa.gov/'}];
         }
     },
     sam: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
-            const key = datagovKey || 'DEMO_KEY';
+            if (!datagovKey) {
+                return [{title: 'SAM.gov requires a data.gov API key',
+                    description: 'Get a free key at https://api.data.gov/signup/ then paste it in the setup wizard or API Key modal.',
+                    date: '', link: 'https://api.data.gov/signup/'}];
+            }
+            const qs = new URLSearchParams({api_key: datagovKey, limit: String(lim)});
+            if (query) qs.set('q', query);
+            if (opts.dateFrom) qs.set('postedFrom', opts.dateFrom);
+            if (opts.dateTo) qs.set('postedTo', opts.dateTo);
+            const directUrl = `https://api.sam.gov/opportunities/v2/search?${qs}`;
+            const parseSam = (d) => (d.opportunitiesData || []).slice(0, lim).map(x => ({
+                title: x.title || 'Contract Opportunity',
+                description: (x.description || '').substring(0,300),
+                date: x.postedDate || '',
+                link: x.uiLink || x.url || 'https://sam.gov'
+            }));
             try {
-                const url = `https://api.sam.gov/opportunities/v2/search?api_key=${key}&pagesize=${lim}&keyword=${query || ''}`;
-                const r = await fetch(url, {signal: AbortSignal.timeout(5000)});
-                if (r.ok) {
-                    const d = await r.json();
-                    return (d.opportunitiesData || []).slice(0, lim).map(x => ({
-                        title: x.title || 'Contract Opportunity',
-                        description: (x.description || '').substring(0,300),
-                        date: x.postedDate || '', link: x.url || 'https://sam.gov'
-                    }));
-                }
-            } catch (e) {
-                // Fall back to proxy
-                try {
-                    const r = await fetch(`${API_BASE}/api/data/sam?sub_section=opportunities&query=${encodeURIComponent(query || '')}&limit=${lim}`);
+                const r = await fetch(directUrl, {signal: AbortSignal.timeout(8000)});
+                if (r.ok) return parseSam(await r.json());
+            } catch {}
+            try {
+                if (IS_STATIC_HOST) {
+                    const r = await fetch(proxyUrl('sam', directUrl));
+                    if (r.ok) return parseSam(await r.json());
+                } else {
+                    const r = await fetch(`${API_BASE}/api/data/sam?api_key=${encodeURIComponent(datagovKey)}&sub_section=opportunities&query=${encodeURIComponent(query || '')}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
-                        return (d.data || []).map(x => ({
+                        return (d.data || d.results || []).map(x => ({
                             title: x.title || '', description: x.description || '',
                             date: x.date || '', link: x.url || 'https://sam.gov'
                         }));
                     }
-                } catch (e2) { }
-            }
-            return [{title: 'SAM.gov requires API key', description: 'Get free key at api.sam.gov', date: '', link: 'https://sam.gov'}];
+                }
+            } catch {}
+            return [{title: 'SAM.gov Data Unavailable', description: 'SAM.gov API is temporarily unreachable or your key is invalid.', date: '', link: 'https://sam.gov'}];
         }
     },
     ftc: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
+            const directUrl = `https://reportportal.ftc.gov/api/widget/data?pagesize=${lim}`;
+            const parseFtc = (d) => {
+                const reports = Array.isArray(d) ? d : (d.data || d.reports || []);
+                return reports.slice(0, lim).map(x => ({
+                    title: x.report_type || x.title || 'FTC Report',
+                    description: (x.description || x.summary || '').substring(0,300),
+                    date: x.date_reported || x.date || '', link: 'https://reportportal.ftc.gov/'
+                }));
+            };
             try {
-                // FTC ReportPortal API
-                const url = `https://reportportal.ftc.gov/api/widget/data?pagesize=${lim}`;
-                const r = await fetch(url, {signal: AbortSignal.timeout(5000)});
+                const r = await fetch(directUrl, {signal: AbortSignal.timeout(5000)});
                 if (r.ok) {
-                    const d = await r.json();
-                    const reports = Array.isArray(d) ? d : (d.data || d.reports || []);
-                    return reports.slice(0, lim).map(x => ({
-                        title: x.report_type || x.title || 'FTC Report',
-                        description: (x.description || x.summary || '').substring(0,300),
-                        date: x.date_reported || x.date || '', link: 'https://reportportal.ftc.gov/'
-                    }));
+                    const parsed = parseFtc(await r.json());
+                    if (parsed.length) return parsed;
                 }
-            } catch (e) {
-                // Fall back to proxy
-                try {
+            } catch {}
+            try {
+                if (IS_STATIC_HOST) {
+                    const r = await fetch(proxyUrl('ftc', directUrl));
+                    if (r.ok) {
+                        const parsed = parseFtc(await r.json());
+                        if (parsed.length) return parsed;
+                    }
+                } else {
                     const r = await fetch(`${API_BASE}/api/data/ftc?limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
@@ -2164,40 +2237,49 @@ const DIRECT_API = {
                             date: x.date || '', link: x.url || 'https://www.ftc.gov/'
                         }));
                     }
-                } catch (e2) { }
-            }
-            return [{title: 'FTC Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://www.ftc.gov/'}];
+                }
+            } catch {}
+            return [{title: 'FTC Data Unavailable', description: 'FTC ReportPortal is temporarily unreachable.', date: '', link: 'https://www.ftc.gov/'}];
         }
     },
     nara: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
             const q = query || 'federal government';
+            const directUrl = `https://catalog.archives.gov/api/v2/records?q=${encodeURIComponent(q)}&limit=${lim}`;
+            // NARA returns Elasticsearch-style: body.hits.hits[*]._source
+            const parseNara = (d) => {
+                const hits = d?.body?.hits?.hits || d?.records || [];
+                return hits.slice(0, lim).map(h => {
+                    const src = h._source || h;
+                    return {
+                        title: src.title || 'Archive Record',
+                        description: (src.scopeAndContentNote || src.scopeAndContent || src.description || '').toString().substring(0,300),
+                        date: src.inclusiveDates?.inclusiveStartDate?.year || src.dateCreated || src.date || '',
+                        link: h._id ? `https://catalog.archives.gov/id/${h._id}` : 'https://catalog.archives.gov/'
+                    };
+                });
+            };
             try {
-                const url = `https://catalog.archives.gov/api/v2/records?q=${encodeURIComponent(q)}&pageSize=${lim}`;
-                const r = await fetch(url, {signal: AbortSignal.timeout(5000)});
-                if (r.ok) {
-                    const d = await r.json();
-                    return (d.records || []).map(x => ({
-                        title: x.title || 'Archive Record',
-                        description: (x.scopeAndContent || x.description || '').substring(0,300),
-                        date: x.dateCreated || x.date || '', link: x.url || 'https://catalog.archives.gov/'
-                    }));
-                }
-            } catch (e) {
-                // Fall back to proxy
-                try {
+                const r = await fetch(directUrl, {signal: AbortSignal.timeout(5000)});
+                if (r.ok) return parseNara(await r.json());
+            } catch {}
+            try {
+                if (IS_STATIC_HOST) {
+                    const r = await fetch(proxyUrl('nara', directUrl));
+                    if (r.ok) return parseNara(await r.json());
+                } else {
                     const r = await fetch(`${API_BASE}/api/data/nara?query=${encodeURIComponent(q)}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
-                        return (d.data || []).map(x => ({
+                        return (d.data || d.results || []).map(x => ({
                             title: x.title || '', description: x.description || '',
-                            date: x.date || '', link: x.url || 'https://catalog.archives.gov/'
+                            date: x.date || '', link: x.url || x.link || 'https://catalog.archives.gov/'
                         }));
                     }
-                } catch (e2) { }
-            }
-            return [{title: 'NARA Data Unavailable', description: 'Run Flask backend for full access', date: '', link: 'https://catalog.archives.gov/'}];
+                }
+            } catch {}
+            return [{title: 'NARA Data Unavailable', description: 'National Archives API is temporarily unreachable.', date: '', link: 'https://catalog.archives.gov/'}];
         }
     }
 };
@@ -2456,42 +2538,36 @@ async function fccNameSearch(q) {
 
 async function fccEcfsFilings(query, opts = {}) {
     const lim = opts.limit || 25;
-    // FCC Electronic Comment Filing System
-    let url = `https://publicapi.fcc.gov/ecfs/filings?limit=${lim}&sort=date_received,DESC`;
-    if (query) url += `&q=${encodeURIComponent(query)}`;
+    let directUrl = `https://publicapi.fcc.gov/ecfs/filings?limit=${lim}&sort=date_received,DESC`;
+    if (query) directUrl += `&q=${encodeURIComponent(query)}`;
+    const parseEcfs = (d) => {
+        const filings = d.filings || d.results || (Array.isArray(d) ? d : []);
+        return (filings || []).slice(0, lim).map(f => ({
+            title: f.name_of_filer || f.filer || f.submitter || 'Anonymous Filer',
+            description: `Proceeding: ${f.proceedings?.[0]?.name || f.proceeding || 'N/A'} | Type: ${f.type_of_filing || f.filing_type || ''}${f.text_data ? ' | ' + (f.text_data || '').substring(0,150) : ''}`,
+            date: f.date_received || f.date_submission || f.date_posted || '',
+            link: f.id_submission ? `https://www.fcc.gov/ecfs/document/${f.id_submission}/1` : 'https://www.fcc.gov/ecfs/',
+            proceeding_number: f.proceedings?.[0]?.id || f.proceeding_number || '',
+            bureau: f.bureau || ''
+        }));
+    };
     try {
-        const r = await corsFetch(url);
-        const d = await r.json();
-        const filings = d.filings || d.results || d || [];
-        if (Array.isArray(filings) && filings.length > 0) {
-            return filings.map(f => ({
-                title: f.name_of_filer || f.filer || f.submitter || 'Anonymous Filer',
-                description: `Proceeding: ${f.proceedings?.[0]?.name || f.proceeding || 'N/A'} | Type: ${f.type_of_filing || f.filing_type || ''}${f.text_data ? ' | ' + (f.text_data || '').substring(0,150) : ''}`,
-                date: f.date_received || f.date_submission || f.date_posted || '',
-                link: f.id_submission ? `https://www.fcc.gov/ecfs/document/${f.id_submission}/1` : 'https://www.fcc.gov/ecfs/',
-                proceeding_number: f.proceedings?.[0]?.id || f.proceeding_number || '',
-                bureau: f.bureau || ''
-            }));
+        const r = await fetch(directUrl, {signal: AbortSignal.timeout(6000)});
+        if (r.ok) {
+            const parsed = parseEcfs(await r.json());
+            if (parsed.length) return parsed;
         }
-    } catch(e) { console.log('ECFS filings failed:', e); }
-
-    // Fallback: try alternate format
-    try {
-        const r = await corsFetch(`https://publicapi.fcc.gov/ecfs/filings?limit=${lim}&sort=date_received,DESC`);
-        const text = await r.text();
-        const d = JSON.parse(text);
-        if (d && typeof d === 'object') {
-            const items = d.filings || d.results || (Array.isArray(d) ? d : []);
-            return items.slice(0, lim).map(f => ({
-                title: f.name_of_filer || JSON.stringify(f).substring(0, 80),
-                description: 'ECFS Filing',
-                date: f.date_received || '',
-                link: 'https://www.fcc.gov/ecfs/'
-            }));
-        }
-    } catch(e) { /* fall through */ }
-
-    return [{ title: 'ECFS Filings', description: 'Unable to load filings. The FCC ECFS API may be temporarily unavailable. Visit the link to browse filings directly.', date: '', link: 'https://www.fcc.gov/ecfs/' }];
+    } catch {}
+    if (IS_STATIC_HOST) {
+        try {
+            const r = await fetch(proxyUrl('fcc_ecfs', directUrl));
+            if (r.ok) {
+                const parsed = parseEcfs(await r.json());
+                if (parsed.length) return parsed;
+            }
+        } catch {}
+    }
+    return [{ title: 'ECFS Filings', description: 'FCC ECFS API is temporarily unreachable. Visit the link to browse filings directly.', date: '', link: 'https://www.fcc.gov/ecfs/' }];
 }
 
 async function fccComplaints(query, opts = {}) {
