@@ -2082,25 +2082,40 @@ const DIRECT_API = {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
             const isComplaints = sub === 'complaints';
+            // NHTSA requires make/model/year on recalls + complaints endpoints.
+            // Parse query as "Make Model [Year]" (e.g., "Ford F-150 2024"), else use a default.
+            let make = 'Ford', model = 'F-150', year = String(new Date().getFullYear() - 1);
+            if (query) {
+                const parts = query.trim().split(/\s+/);
+                if (parts.length >= 1) make = parts[0];
+                if (parts.length >= 2) model = parts.slice(1, -1).join(' ') || parts[1];
+                const yearMatch = query.match(/\b(19|20)\d{2}\b/);
+                if (yearMatch) year = yearMatch[0];
+            }
+            const qs = `make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&modelYear=${encodeURIComponent(year)}`;
             const directUrl = isComplaints
-                ? `https://api.nhtsa.gov/complaints?pagesize=${lim}&format=json`
-                : `https://api.nhtsa.gov/recalls/recallsearch?pageindex=0&resultsperpage=${lim}&format=json`;
+                ? `https://api.nhtsa.gov/complaints/complaintsByVehicle?${qs}`
+                : `https://api.nhtsa.gov/recalls/recallsByVehicle?${qs}`;
             const parseDot = (d) => {
                 const rows = d.results || [];
                 return isComplaints
                     ? rows.slice(0, lim).map(x => ({
-                        title: (x.complaint_text || '').substring(0,80) || 'Safety Complaint',
-                        description: `${x.vehicle_make || ''} ${x.vehicle_year || ''} | ${(x.complaint_text || '').substring(0,200)}`,
-                        date: x.complaint_date || '', link: 'https://www.nhtsa.gov/'
+                        title: `${x.make || make} ${x.model || model} (${x.modelYear || year}) - ${x.components || 'Complaint'}`,
+                        description: (x.summary || '').substring(0,300),
+                        date: x.dateOfIncident || x.dateComplaintFiled || '',
+                        link: 'https://www.nhtsa.gov/vehicle/' + encodeURIComponent(`${year}-${make}-${model}`)
                     }))
                     : rows.slice(0, lim).map(x => ({
-                        title: `${x.Make || ''} ${x.ModelYear || ''} - ${x.Component || ''}`,
-                        description: (x.Summary || '').substring(0,300),
-                        date: x.ReportReceivedDate || '', link: 'https://www.nhtsa.gov/recalls'
+                        title: `${x.Manufacturer || make} ${x.ModelYear || year} ${x.Model || model} - ${x.Component || ''}`,
+                        description: (x.Summary || x.Consequence || '').substring(0,300),
+                        date: x.ReportReceivedDate || '',
+                        link: x.NHTSACampaignNumber
+                            ? `https://www.nhtsa.gov/recalls?nhtsaId=${x.NHTSACampaignNumber}`
+                            : 'https://www.nhtsa.gov/recalls'
                     }));
             };
             try {
-                const r = await fetch(directUrl, {signal: AbortSignal.timeout(5000)});
+                const r = await fetch(directUrl, {signal: AbortSignal.timeout(6000)});
                 if (r.ok) return parseDot(await r.json());
             } catch {}
             try {
@@ -2119,7 +2134,11 @@ const DIRECT_API = {
                     }
                 }
             } catch {}
-            return [{title: 'DOT Data Unavailable', description: 'NHTSA API is temporarily unreachable.', date: '', link: 'https://www.nhtsa.gov/'}];
+            return [{
+                title: 'DOT/NHTSA — try a specific vehicle',
+                description: `Searched: ${make} ${model} ${year}. NHTSA requires make/model/year. Try "Toyota Camry 2023" or similar in the search box.`,
+                date: '', link: 'https://www.nhtsa.gov/recalls'
+            }];
         }
     },
     epa: {
@@ -2205,81 +2224,86 @@ const DIRECT_API = {
     ftc: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
-            const directUrl = `https://reportportal.ftc.gov/api/widget/data?pagesize=${lim}`;
-            const parseFtc = (d) => {
-                const reports = Array.isArray(d) ? d : (d.data || d.reports || []);
-                return reports.slice(0, lim).map(x => ({
-                    title: x.report_type || x.title || 'FTC Report',
-                    description: (x.description || x.summary || '').substring(0,300),
-                    date: x.date_reported || x.date || '', link: 'https://reportportal.ftc.gov/'
-                }));
-            };
-            try {
-                const r = await fetch(directUrl, {signal: AbortSignal.timeout(5000)});
-                if (r.ok) {
-                    const parsed = parseFtc(await r.json());
-                    if (parsed.length) return parsed;
-                }
-            } catch {}
-            try {
-                if (IS_STATIC_HOST) {
-                    const r = await fetch(proxyUrl('ftc', directUrl));
-                    if (r.ok) {
-                        const parsed = parseFtc(await r.json());
-                        if (parsed.length) return parsed;
-                    }
-                } else {
-                    const r = await fetch(`${API_BASE}/api/data/ftc?limit=${lim}`);
+            // FTC does not expose a public JSON API for press releases / enforcement. Their
+            // former reportportal.ftc.gov endpoint returns 1016 DNS errors and there is no
+            // maintained RSS feed. Self-hosters can still fall back to the Flask wrapper.
+            if (!IS_STATIC_HOST) {
+                try {
+                    const r = await fetch(`${API_BASE}/api/data/ftc?sub_section=${sub || 'press_releases'}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
-                        return (d.data || []).map(x => ({
-                            title: x.title || '', description: x.description || '',
+                        const rows = (d.data || d.results || []).map(x => ({
+                            title: x.title || '', description: (x.description || x.body || '').substring(0,300),
                             date: x.date || '', link: x.url || 'https://www.ftc.gov/'
                         }));
+                        if (rows.length) return rows;
                     }
-                }
-            } catch {}
-            return [{title: 'FTC Data Unavailable', description: 'FTC ReportPortal is temporarily unreachable.', date: '', link: 'https://www.ftc.gov/'}];
+                } catch {}
+            }
+            const q = query ? encodeURIComponent(query) : '';
+            return [{
+                title: 'FTC press releases — browse on ftc.gov',
+                description: 'The FTC has no public JSON feed we can proxy safely. Open the link to browse press releases and enforcement actions directly on ftc.gov. We will wire this up if the FTC publishes a JSON API.',
+                date: '',
+                link: q ? `https://www.ftc.gov/search?search=${q}` : 'https://www.ftc.gov/news-events/news/press-releases'
+            }];
         }
     },
     nara: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
             const q = query || 'federal government';
-            const directUrl = `https://catalog.archives.gov/api/v2/records?q=${encodeURIComponent(q)}&limit=${lim}`;
-            // NARA returns Elasticsearch-style: body.hits.hits[*]._source
+            const directUrl = `https://catalog.archives.gov/api/v2/records/search?q=${encodeURIComponent(q)}&limit=${lim}`;
+            // Parse ES-style (body.hits.hits[*]._source) or v2 flat (records[]) shapes.
             const parseNara = (d) => {
-                const hits = d?.body?.hits?.hits || d?.records || [];
+                const hits = d?.body?.hits?.hits || d?.records || d?.results || [];
                 return hits.slice(0, lim).map(h => {
                     const src = h._source || h;
                     return {
                         title: src.title || 'Archive Record',
                         description: (src.scopeAndContentNote || src.scopeAndContent || src.description || '').toString().substring(0,300),
                         date: src.inclusiveDates?.inclusiveStartDate?.year || src.dateCreated || src.date || '',
-                        link: h._id ? `https://catalog.archives.gov/id/${h._id}` : 'https://catalog.archives.gov/'
+                        link: (h._id || src.naId) ? `https://catalog.archives.gov/id/${h._id || src.naId}` : 'https://catalog.archives.gov/'
                     };
                 });
             };
+            const looksLikeJson = (body) => body && body.trim().startsWith('{');
+            const tryFetch = async (url) => {
+                const r = await fetch(url, {signal: AbortSignal.timeout(6000)});
+                if (!r.ok) return null;
+                const text = await r.text();
+                if (!looksLikeJson(text)) return null;   // NARA currently serves SPA HTML on /api/v2/records
+                try { return parseNara(JSON.parse(text)); } catch { return null; }
+            };
             try {
-                const r = await fetch(directUrl, {signal: AbortSignal.timeout(5000)});
-                if (r.ok) return parseNara(await r.json());
+                const out = await tryFetch(directUrl);
+                if (out?.length) return out;
             } catch {}
-            try {
-                if (IS_STATIC_HOST) {
-                    const r = await fetch(proxyUrl('nara', directUrl));
-                    if (r.ok) return parseNara(await r.json());
-                } else {
+            if (IS_STATIC_HOST) {
+                try {
+                    const out = await tryFetch(proxyUrl('nara', directUrl));
+                    if (out?.length) return out;
+                } catch {}
+            } else {
+                try {
                     const r = await fetch(`${API_BASE}/api/data/nara?query=${encodeURIComponent(q)}&limit=${lim}`);
                     if (r.ok) {
                         const d = await r.json();
-                        return (d.data || d.results || []).map(x => ({
+                        const rows = (d.data || d.results || []).map(x => ({
                             title: x.title || '', description: x.description || '',
                             date: x.date || '', link: x.url || x.link || 'https://catalog.archives.gov/'
                         }));
+                        if (rows.length) return rows;
                     }
-                }
-            } catch {}
-            return [{title: 'NARA Data Unavailable', description: 'National Archives API is temporarily unreachable.', date: '', link: 'https://catalog.archives.gov/'}];
+                } catch {}
+            }
+            // NARA's JSON API is currently returning their SPA HTML — documented upstream issue.
+            return [{
+                title: 'NARA Catalog API temporarily returning HTML',
+                description: `The National Archives catalog API (catalog.archives.gov) is currently returning the web SPA instead of JSON for "${q}". Browse directly at the link. We check for JSON on every request and will switch back automatically when the upstream API recovers.`,
+                date: '',
+                link: `https://catalog.archives.gov/search?q=${encodeURIComponent(q)}`
+            }];
         }
     }
 };
@@ -2538,18 +2562,28 @@ async function fccNameSearch(q) {
 
 async function fccEcfsFilings(query, opts = {}) {
     const lim = opts.limit || 25;
-    let directUrl = `https://publicapi.fcc.gov/ecfs/filings?limit=${lim}&sort=date_received,DESC`;
+    // FCC ECFS requires a data.gov API key. DEMO_KEY works but is rate-limited to ~30/hour.
+    const apiKey = datagovKey || 'DEMO_KEY';
+    let directUrl = `https://publicapi.fcc.gov/ecfs/filings?api_key=${encodeURIComponent(apiKey)}&limit=${lim}&sort=date_received,DESC`;
     if (query) directUrl += `&q=${encodeURIComponent(query)}`;
     const parseEcfs = (d) => {
-        const filings = d.filings || d.results || (Array.isArray(d) ? d : []);
-        return (filings || []).slice(0, lim).map(f => ({
-            title: f.name_of_filer || f.filer || f.submitter || 'Anonymous Filer',
-            description: `Proceeding: ${f.proceedings?.[0]?.name || f.proceeding || 'N/A'} | Type: ${f.type_of_filing || f.filing_type || ''}${f.text_data ? ' | ' + (f.text_data || '').substring(0,150) : ''}`,
-            date: f.date_received || f.date_submission || f.date_posted || '',
-            link: f.id_submission ? `https://www.fcc.gov/ecfs/document/${f.id_submission}/1` : 'https://www.fcc.gov/ecfs/',
-            proceeding_number: f.proceedings?.[0]?.id || f.proceeding_number || '',
-            bureau: f.bureau || ''
-        }));
+        const filings = d.filing || d.filings || d.results || (Array.isArray(d) ? d : []);
+        return (filings || []).slice(0, lim).map(f => {
+            const firm = (f.lawfirms || [])[0]?.name;
+            const proc = (f.proceedings || [])[0];
+            const filer = firm || f.name_of_filer || f.filer || f.submitter || 'Anonymous Filer';
+            const subType = f.submissiontype?.description || f.type_of_filing || f.filing_type || '';
+            const procName = proc?.name ? `Proceeding ${proc.name}` : '';
+            const procDesc = proc?.description_display || proc?.description || '';
+            return {
+                title: filer,
+                description: [procName, subType, procDesc.substring(0, 200)].filter(Boolean).join(' | '),
+                date: f.date_received || f.date_last_modified || f.date_submission || '',
+                link: f.id_submission ? `https://www.fcc.gov/ecfs/document/${f.id_submission}/1` : 'https://www.fcc.gov/ecfs/',
+                proceeding_number: proc?.name || f.proceeding_number || '',
+                bureau: (f.bureaus || [])[0]?.name || f.bureau || ''
+            };
+        });
     };
     try {
         const r = await fetch(directUrl, {signal: AbortSignal.timeout(6000)});

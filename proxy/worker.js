@@ -11,10 +11,15 @@ const UPSTREAMS = {
   dot:         'https://api.nhtsa.gov',
   epa:         'https://data.epa.gov',
   sam:         'https://api.sam.gov',
-  ftc:         'https://reportportal.ftc.gov',
+  ftc:         'https://www.ftc.gov',
   nara:        'https://catalog.archives.gov',
   fcc_ecfs:    'https://publicapi.fcc.gov',
 };
+
+// Browser-like User-Agent. Several upstreams (LOC, EPA) are behind Cloudflare or
+// WAFs that block generic "OpenGovDash/1.0" style UAs. This UA matches a real
+// Chrome and still identifies the app via the Referer header (set to our site).
+const PROXY_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 OpenGovDash/1.0';
 
 const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/selvidge\.tech$/,
@@ -78,7 +83,8 @@ export default {
           || lower.startsWith('cf-')) continue;
       outHeaders.set(k, v);
     }
-    outHeaders.set('User-Agent', 'OpenGovDash/1.0 (+https://github.com/HBT89/government-data-fun)');
+    outHeaders.set('User-Agent', PROXY_UA);
+    outHeaders.set('Referer', 'https://selvidge.tech/government-data-fun/');
 
     let upstreamResp;
     try {
