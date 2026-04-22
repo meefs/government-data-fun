@@ -1,0 +1,7 @@
+name = "opengov-proxy"
+main = "worker.js"
+compatibility_date = "2026-04-01"
+
+# Leave workers_dev = true so the Worker is reachable at
+# https://opengov-proxy.<your-subdomain>.workers.dev after deploy.
+workers_dev = true

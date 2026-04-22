@@ -2,7 +2,7 @@
 
 A single-page browser app for exploring 21 US government agencies with ~56 data endpoints. Search, filter, cross-reference, and chat with an AI that can call the government APIs on your behalf.
 
-**Live demo:** https://hbt89.github.io/government-data-fun/
+**Live demo:** https://selvidge.tech/government-data-fun/
 
 ## Features
 
@@ -15,7 +15,7 @@ A single-page browser app for exploring 21 US government agencies with ~56 data 
 
 ### Option 1 — use the live demo
 
-Open https://hbt89.github.io/government-data-fun/ and follow the setup wizard.
+Open https://selvidge.tech/government-data-fun/ and follow the setup wizard.
 
 ### Option 2 — host it yourself on GitHub Pages
 
