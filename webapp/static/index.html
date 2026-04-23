@@ -1271,6 +1271,19 @@ Free mode is active — no API key needed, just start chatting. For alternate pr
 <div id="api-key-modal" class="modal-overlay" style="display:none;">
     <div class="modal">
         <h3><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:middle;margin-right:4px;"><circle cx="5.5" cy="6.5" r="2.5"/><path d="M7.5 8.5l5 5m-2-1l2 1-1-2"/></svg> AI Provider Settings</h3>
+
+        <div style="margin:0 0 12px 0;padding:8px 10px;border:1px solid var(--border);background:var(--bg-primary);font-size:11px;line-height:1.5;color:var(--text-muted);">
+            Keys are stored in your browser's localStorage and sent only to the provider you paste them for. Don't use this on a shared device.
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <span style="font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;">Configured keys</span>
+                <button onclick="renderKeyHealthPanels()" title="Re-check all keys" style="border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:10px;">Re-check</button>
+            </div>
+            <div data-key-health-panel style="margin-bottom:12px;"></div>
+        </div>
+
         <label>AI Provider</label>
         <select id="modal-provider-select" onchange="modalProviderChange()" style="width:100%;padding:8px 12px;border-radius:0;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:13px;outline:none;">
             <option value="free">Free Mode (HuggingFace)</option>
@@ -1281,14 +1294,25 @@ Free mode is active — no API key needed, just start chatting. For alternate pr
         </select>
         <div id="modal-key-section">
             <label id="modal-key-label">API Key</label>
-            <input id="modal-key-input" type="password" placeholder="Enter API key..." oninput="detectOpenAIKeyType()">
+            <div style="position:relative;">
+                <input id="modal-key-input" type="password" placeholder="Enter API key..." oninput="onModalKeyInput()" style="padding-right:54px;">
+                <button type="button" id="modal-key-show" onclick="toggleModalKeyVisibility()" title="Show/hide key"
+                    style="position:absolute;right:6px;top:50%;transform:translateY(-50%);border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:10px;">Show</button>
+            </div>
+            <div id="modal-key-validation" style="margin-top:6px;min-height:14px;"></div>
             <div id="openai-key-type-info" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--border);background:var(--bg-primary);font-size:11px;line-height:1.5;">
                 <div id="openai-key-type-badge" style="margin-bottom:4px;font-weight:600;"></div>
                 <div id="openai-key-type-hint" style="color:var(--text-muted);"></div>
             </div>
         </div>
-        <label>data.gov API Key (optional, for enhanced access)</label>
-        <input id="datagov-key-input" type="text" placeholder="Your data.gov API key">
+        <label>data.gov API Key (optional — needed for SAM.gov and higher NASA/FEC rate limits)</label>
+        <div style="position:relative;">
+            <input id="datagov-key-input" type="password" placeholder="Your data.gov API key" oninput="onDatagovKeyInput()" style="padding-right:54px;">
+            <button type="button" id="modal-datagov-show" onclick="toggleModalDatagovVisibility()" title="Show/hide key"
+                style="position:absolute;right:6px;top:50%;transform:translateY(-50%);border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:10px;">Show</button>
+        </div>
+        <div id="modal-datagov-validation" style="margin-top:6px;min-height:14px;"></div>
+
         <div class="btn-row">
             <button class="btn-secondary" onclick="closeApiKeyModal()">Cancel</button>
             <button class="btn-primary" onclick="saveApiKeys()">Save</button>
@@ -1432,6 +1456,168 @@ function isProviderReady(provider) {
     if (provider === 'free') return true;
     const state = apiState[provider];
     return state && state.configured;
+}
+
+// ========== API KEY VALIDATION + MASKING + REVOKE (Phase 2) ==========
+
+// Cheap probes that hit each provider with minimal cost. Valid keys return 200/2xx.
+// Invalid keys return 401/403. Rate-limited keys return 429 (still valid — warn).
+const KEY_VALIDATORS = {
+    openai:  (k) => fetch('https://api.openai.com/v1/models',
+        { headers: {'Authorization': `Bearer ${k}`} }),
+    groq:    (k) => fetch('https://api.groq.com/openai/v1/models',
+        { headers: {'Authorization': `Bearer ${k}`} }),
+    gemini:  (k) => fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(k)}`),
+    claude:  (k) => fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'x-api-key': k, 'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+            'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 1, messages: [{role:'user',content:'hi'}] })
+    }),
+    // data.gov key validator uses the NASA APOD endpoint because it's the cheapest gated call.
+    datagov: (k) => fetch(`https://api.nasa.gov/planetary/apod?api_key=${encodeURIComponent(k)}&count=1`),
+};
+
+// { ok: bool, reason?: 'empty'|'unauthorized'|'rate_limited'|'network'|`http_NNN`, warn?: string }
+async function validateKey(provider, key) {
+    if (!key) return { ok: false, reason: 'empty' };
+    const fn = KEY_VALIDATORS[provider];
+    if (!fn) return { ok: true };  // unknown provider — assume fine, no validator wired
+    try {
+        const r = await Promise.race([
+            fn(key),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('validator_timeout')), 7000)),
+        ]);
+        if (r.status === 401 || r.status === 403) return { ok: false, reason: 'unauthorized' };
+        if (r.status === 429) return { ok: true, warn: 'rate_limited_now' };
+        if (r.ok) return { ok: true };
+        return { ok: false, reason: `http_${r.status}` };
+    } catch (e) {
+        return { ok: false, reason: 'network' };
+    }
+}
+
+function maskKey(k) {
+    if (!k) return '';
+    const s = String(k);
+    if (s.length <= 10) return '•'.repeat(s.length);
+    return s.slice(0, 3) + '••••' + s.slice(-4);
+}
+
+// Provider -> current key variable getter/setter (central source of truth).
+function getProviderKey(provider) {
+    if (provider === 'openai')  return openaiKey;
+    if (provider === 'groq')    return groqKey;
+    if (provider === 'gemini')  return geminiKey;
+    if (provider === 'claude')  return claudeKey;
+    if (provider === 'datagov') return datagovKey;
+    return '';
+}
+function setProviderKey(provider, value) {
+    if (provider === 'openai')  openaiKey  = value;
+    else if (provider === 'groq')    groqKey    = value;
+    else if (provider === 'gemini')  geminiKey  = value;
+    else if (provider === 'claude')  claudeKey  = value;
+    else if (provider === 'datagov') datagovKey = value;
+    const lsKey = provider === 'datagov' ? 'datagov_key' : `${provider}_key`;
+    try {
+        if (value) localStorage.setItem(lsKey, value);
+        else localStorage.removeItem(lsKey);
+    } catch(e) {}
+}
+function revokeKey(provider) {
+    if (!getProviderKey(provider)) return;
+    setProviderKey(provider, '');
+    updateApiState();
+    renderKeyHealthPanels();
+}
+
+// Cache validator results so the dashboard doesn't burn quota on every render.
+// Key: provider; Value: { ok, warn?, reason?, ts }
+const KEY_HEALTH_CACHE = {};
+const KEY_HEALTH_TTL_MS = 60 * 1000;
+
+async function checkKeyHealth(provider, { force = false } = {}) {
+    const key = getProviderKey(provider);
+    if (!key) { delete KEY_HEALTH_CACHE[provider]; return { state: 'none' }; }
+    const cached = KEY_HEALTH_CACHE[provider];
+    if (!force && cached && (Date.now() - cached.ts) < KEY_HEALTH_TTL_MS) return cached;
+    const res = await validateKey(provider, key);
+    const out = { ...res, ts: Date.now() };
+    KEY_HEALTH_CACHE[provider] = out;
+    return out;
+}
+
+function keyHealthLabel(h) {
+    if (!h || h.state === 'none') return { dot: '○', label: 'Not set', color: 'var(--text-muted)' };
+    if (h.ok && h.warn === 'rate_limited_now') return { dot: '●', label: 'Rate-limited', color: '#f59e0b' };
+    if (h.ok) return { dot: '●', label: 'Verified', color: 'var(--accent-success, #10b981)' };
+    if (h.reason === 'unauthorized') return { dot: '●', label: 'Invalid key', color: '#ef4444' };
+    if (h.reason === 'network' || h.reason === 'empty') return { dot: '●', label: 'Unreachable', color: '#ef4444' };
+    return { dot: '●', label: h.reason || 'Unknown', color: '#ef4444' };
+}
+
+// Render the key-health panel into every container with [data-key-health-panel].
+// Called on modal open, wizard open, and after any save/revoke.
+async function renderKeyHealthPanels() {
+    const containers = document.querySelectorAll('[data-key-health-panel]');
+    if (!containers.length) return;
+    const providers = [
+        { id:'openai',  name:'OpenAI'    },
+        { id:'groq',    name:'Groq'      },
+        { id:'gemini',  name:'Gemini'    },
+        { id:'claude',  name:'Claude'    },
+        { id:'datagov', name:'data.gov'  },
+    ];
+    // Skeleton first (instant paint)
+    for (const c of containers) {
+        c.innerHTML = providers.map(p => {
+            const key = getProviderKey(p.id);
+            const mask = key ? maskKey(key) : '<span style="color:var(--text-muted);">not set</span>';
+            return `<div class="khp-row" data-provider="${p.id}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+                <span class="khp-dot" style="color:var(--text-muted);width:10px;font-size:14px;line-height:1;">○</span>
+                <span style="flex:0 0 72px;color:var(--text-secondary);">${p.name}</span>
+                <span class="khp-mask" style="flex:1;color:var(--text-muted);font-family:var(--font-mono, monospace);font-size:11px;">${mask}</span>
+                <span class="khp-status" style="color:var(--text-muted);font-size:11px;">${key ? 'checking…' : '—'}</span>
+                ${key ? `<button onclick="revokeKey('${p.id}')" class="khp-revoke" title="Remove this key" style="border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:10px;">Revoke</button>` : ''}
+            </div>`;
+        }).join('');
+    }
+    // Populate each row with fresh health.
+    await Promise.all(providers.map(async p => {
+        const h = await checkKeyHealth(p.id);
+        const label = keyHealthLabel({ ...(h || {}), state: getProviderKey(p.id) ? 'set' : 'none' });
+        document.querySelectorAll(`.khp-row[data-provider="${p.id}"]`).forEach(row => {
+            const dot = row.querySelector('.khp-dot');
+            const status = row.querySelector('.khp-status');
+            if (dot) { dot.textContent = label.dot; dot.style.color = label.color; }
+            if (status) { status.textContent = label.label; status.style.color = label.color; }
+        });
+    }));
+}
+
+// Debounced inline validator for a single key input. target = the <div> to paint into.
+const _keyInputTimers = {};
+function onKeyInputDebounced(provider, inputEl, targetEl) {
+    if (_keyInputTimers[provider]) clearTimeout(_keyInputTimers[provider]);
+    const key = (inputEl?.value || '').trim();
+    if (!targetEl) return;
+    if (!key) { targetEl.innerHTML = ''; return; }
+    targetEl.innerHTML = `<span style="color:var(--text-muted);font-size:11px;">Validating…</span>`;
+    _keyInputTimers[provider] = setTimeout(async () => {
+        const res = await validateKey(provider, key);
+        KEY_HEALTH_CACHE[provider] = { ...res, ts: Date.now() };
+        const label = keyHealthLabel({ ...(res || {}), state: 'set' });
+        targetEl.innerHTML = `<span style="color:${label.color};font-size:11px;font-weight:500;">● ${label.label}</span>${
+            res.reason === 'unauthorized' ? ' <span style="color:var(--text-muted);font-size:11px;">— the provider rejected this key.</span>'
+            : res.reason === 'network' ? ' <span style="color:var(--text-muted);font-size:11px;">— network or CORS error; try again.</span>'
+            : res.warn === 'rate_limited_now' ? ' <span style="color:var(--text-muted);font-size:11px;">— key is valid but currently throttled.</span>'
+            : ''
+        }`;
+    }, 600);
 }
 
 // Smart date formatter that handles various API date formats
@@ -4004,13 +4190,13 @@ function showApiKeyModal() {
     document.getElementById('api-key-modal').style.display = 'flex';
     document.getElementById('modal-provider-select').value = aiProvider;
     document.getElementById('datagov-key-input').value = datagovKey;
+    // Datagov always starts hidden
+    const dg = document.getElementById('datagov-key-input');
+    dg.type = 'password';
+    document.getElementById('modal-datagov-show').textContent = 'Show';
+    document.getElementById('modal-datagov-validation').innerHTML = '';
     modalProviderChange();
-    // Load existing key
-    const keyInput = document.getElementById('modal-key-input');
-    if (aiProvider === 'openai') keyInput.value = openaiKey;
-    else if (aiProvider === 'groq') keyInput.value = groqKey;
-    else if (aiProvider === 'gemini') keyInput.value = geminiKey;
-    else if (aiProvider === 'claude') keyInput.value = claudeKey;
+    renderKeyHealthPanels();
 }
 
 function modalProviderChange() {
@@ -4018,6 +4204,13 @@ function modalProviderChange() {
     const keySection = document.getElementById('modal-key-section');
     const keyLabel = document.getElementById('modal-key-label');
     const keyInput = document.getElementById('modal-key-input');
+    const validation = document.getElementById('modal-key-validation');
+    const showBtn = document.getElementById('modal-key-show');
+
+    // Reset visibility every time provider changes
+    keyInput.type = 'password';
+    if (showBtn) showBtn.textContent = 'Show';
+    if (validation) validation.innerHTML = '';
 
     if (provider === 'free') {
         keySection.style.display = 'none';
@@ -4026,21 +4219,44 @@ function modalProviderChange() {
         const labels = { openai: 'OpenAI API Key', groq: 'Groq API Key', gemini: 'Google Gemini API Key', claude: 'Anthropic API Key' };
         const placeholders = { openai: 'sk-...', groq: 'gsk_...', gemini: 'AI...', claude: 'sk-ant-...' };
 
-        // Load existing key for this provider
-        let existingKey = '';
-        if (provider === 'openai') existingKey = openaiKey;
-        else if (provider === 'groq') existingKey = groqKey;
-        else if (provider === 'gemini') existingKey = geminiKey;
-        else if (provider === 'claude') existingKey = claudeKey;
-
+        const existingKey = getProviderKey(provider);
         keyInput.value = existingKey;
 
-        // Update label with status badge
-        const statusBadge = existingKey ? ' <span style="color:var(--accent-success, #10b981);font-size:11px;margin-left:6px;">✓ Configured</span>' : '';
-        keyLabel.innerHTML = (labels[provider] || 'API Key') + statusBadge;
+        const configured = existingKey
+            ? ` <span style="color:var(--accent-success, #10b981);font-size:11px;margin-left:6px;">✓ Configured · ${maskKey(existingKey)}</span>`
+            : '';
+        keyLabel.innerHTML = (labels[provider] || 'API Key') + configured;
         keyInput.placeholder = placeholders[provider] || 'Enter API key...';
     }
     detectOpenAIKeyType();
+}
+
+function onModalKeyInput() {
+    detectOpenAIKeyType();
+    const provider = document.getElementById('modal-provider-select').value;
+    if (provider === 'free') return;
+    const input = document.getElementById('modal-key-input');
+    const target = document.getElementById('modal-key-validation');
+    onKeyInputDebounced(provider, input, target);
+}
+
+function onDatagovKeyInput() {
+    const input = document.getElementById('datagov-key-input');
+    const target = document.getElementById('modal-datagov-validation');
+    onKeyInputDebounced('datagov', input, target);
+}
+
+function toggleModalKeyVisibility() {
+    const input = document.getElementById('modal-key-input');
+    const btn = document.getElementById('modal-key-show');
+    if (input.type === 'password') { input.type = 'text'; btn.textContent = 'Hide'; }
+    else { input.type = 'password'; btn.textContent = 'Show'; }
+}
+function toggleModalDatagovVisibility() {
+    const input = document.getElementById('datagov-key-input');
+    const btn = document.getElementById('modal-datagov-show');
+    if (input.type === 'password') { input.type = 'text'; btn.textContent = 'Hide'; }
+    else { input.type = 'password'; btn.textContent = 'Show'; }
 }
 
 function detectOpenAIKeyType() {
@@ -4078,38 +4294,36 @@ function closeApiKeyModal() {
     document.getElementById('api-key-modal').style.display = 'none';
 }
 
-function saveApiKeys() {
+async function saveApiKeys() {
     aiProvider = document.getElementById('modal-provider-select').value;
     const key = document.getElementById('modal-key-input')?.value?.trim() || '';
+    const newDatagov = document.getElementById('datagov-key-input').value.trim();
 
-    // Save to memory AND localStorage
-    if (aiProvider === 'openai') {
-        openaiKey = key;
-        try { localStorage.setItem('openai_key', key); } catch(e) {}
+    // Validate the provider key if one was entered and provider is not Free.
+    if (aiProvider !== 'free' && key) {
+        const res = await validateKey(aiProvider, key);
+        if (!res.ok && res.reason === 'unauthorized') {
+            const proceed = confirm('The provider rejected this key (401/403). Save anyway?');
+            if (!proceed) return;
+        }
     }
-    else if (aiProvider === 'groq') {
-        groqKey = key;
-        try { localStorage.setItem('groq_key', key); } catch(e) {}
-    }
-    else if (aiProvider === 'gemini') {
-        geminiKey = key;
-        try { localStorage.setItem('gemini_key', key); } catch(e) {}
-    }
-    else if (aiProvider === 'claude') {
-        claudeKey = key;
-        try { localStorage.setItem('claude_key', key); } catch(e) {}
+    // Validate data.gov key if entered and changed.
+    if (newDatagov && newDatagov !== datagovKey) {
+        const res = await validateKey('datagov', newDatagov);
+        if (!res.ok && res.reason === 'unauthorized') {
+            const proceed = confirm('The data.gov API rejected this key. Save anyway?');
+            if (!proceed) return;
+        }
     }
 
-    // Save selected provider
+    if (aiProvider !== 'free') setProviderKey(aiProvider, key);
     try { localStorage.setItem('ai_provider', aiProvider); } catch(e) {}
-
-    datagovKey = document.getElementById('datagov-key-input').value.trim();
-    if (datagovKey) try { localStorage.setItem('datagov_key', datagovKey); } catch(e) {}
+    setProviderKey('datagov', newDatagov);
 
     updateApiState();
+    renderKeyHealthPanels();
     closeApiKeyModal();
 
-    // Show confirmation in chat area
     const providerNames = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
     const name = providerNames[aiProvider] || aiProvider;
     if (key || aiProvider === 'free') {
@@ -4152,46 +4366,37 @@ function closeProviderSetupModal() {
     document.getElementById('provider-setup-modal').style.display = 'none';
 }
 
-function saveSetupKey(provider) {
+async function saveSetupKey(provider) {
     const key = document.getElementById('setup-key-input').value.trim();
-    if (!key) {
-        alert('Please paste your API key');
-        return;
-    }
+    if (!key) { alert('Please paste your API key'); return; }
 
-    // Save to memory AND localStorage
-    let currentKey = '';
-    if (provider === 'openai') {
-        currentKey = openaiKey;
-        openaiKey = key;
-        try { localStorage.setItem('openai_key', key); } catch(e) {}
-    }
-    else if (provider === 'groq') {
-        currentKey = groqKey;
-        groqKey = key;
-        try { localStorage.setItem('groq_key', key); } catch(e) {}
-    }
-    else if (provider === 'gemini') {
-        currentKey = geminiKey;
-        geminiKey = key;
-        try { localStorage.setItem('gemini_key', key); } catch(e) {}
-    }
-    else if (provider === 'claude') {
-        currentKey = claudeKey;
-        claudeKey = key;
-        try { localStorage.setItem('claude_key', key); } catch(e) {}
-    }
+    const previousKey = getProviderKey(provider);
 
-    // Also switch active provider to the one just configured
+    const btn = document.querySelector(`#provider-setup-modal button[onclick="saveSetupKey('${provider}')"]`);
+    const origText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Validating…'; }
+
+    const res = await validateKey(provider, key);
+    if (!res.ok && res.reason === 'unauthorized') {
+        if (btn) { btn.disabled = false; btn.textContent = origText; }
+        const proceed = confirm('The provider rejected this key (401/403). Save anyway?');
+        if (!proceed) return;
+    }
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
+
+    setProviderKey(provider, key);
     aiProvider = provider;
     try { localStorage.setItem('ai_provider', provider); } catch(e) {}
 
     updateApiState();
+    renderKeyHealthPanels();
     closeProviderSetupModal();
 
-    // Show confirmation in chat (don't pollute history sent to AI)
-    const action = currentKey ? 'updated' : 'configured';
-    appendChat('assistant', `✓ ${apiState[provider].name} is now ${action}. Ready to chat!`, {noHistory: true});
+    const action = previousKey ? 'updated' : 'configured';
+    const note = (res.ok && res.warn === 'rate_limited_now') ? ' (currently rate-limited)'
+               : (!res.ok && res.reason === 'unauthorized') ? ' — warning: provider rejected this key'
+               : '';
+    appendChat('assistant', `✓ ${apiState[provider].name} is now ${action}${note}. Ready to chat!`, {noHistory: true});
 }
 
 // Multi-provider setup from welcome page
