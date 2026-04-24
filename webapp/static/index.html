@@ -1394,6 +1394,9 @@ const API_BASE = '';  // Same origin for Flask backend (self-hosters)
 const PROXY_BASE = window.__OGD_PROXY__ || 'https://opengov-proxy.psjs.workers.dev/p';
 // True when served from a static host (GitHub Pages / selvidge.tech). No Flask backend available.
 const IS_STATIC_HOST = location.protocol === 'https:' && !/^(localhost|127\.0\.0\.1)/.test(location.hostname);
+// Expose a few constants on window so DevTools / smoke-test scripts can introspect them.
+window.PROXY_BASE = PROXY_BASE;
+window.IS_STATIC_HOST = IS_STATIC_HOST;
 let agencies = [];
 let currentAgency = null;
 let currentSubSection = '';
@@ -1531,8 +1534,32 @@ function setProviderKey(provider, value) {
 function revokeKey(provider) {
     if (!getProviderKey(provider)) return;
     setProviderKey(provider, '');
+    delete KEY_HEALTH_CACHE[provider];
     updateApiState();
     renderKeyHealthPanels();
+    // If the modal is open and the currently-selected provider is the one we revoked,
+    // clear the input + label so the UI doesn't show a stale "✓ Configured · sk-··· key".
+    const modal = document.getElementById('api-key-modal');
+    if (modal && modal.style.display !== 'none') {
+        const selected = document.getElementById('modal-provider-select')?.value;
+        if (selected === provider) {
+            const input = document.getElementById('modal-key-input');
+            if (input) { input.value = ''; input.type = 'password'; }
+            const showBtn = document.getElementById('modal-key-show');
+            if (showBtn) showBtn.textContent = 'Show';
+            const validation = document.getElementById('modal-key-validation');
+            if (validation) validation.innerHTML = '';
+            modalProviderChange();  // re-runs label + placeholder logic
+        }
+        if (provider === 'datagov') {
+            const dg = document.getElementById('datagov-key-input');
+            if (dg) { dg.value = ''; dg.type = 'password'; }
+            const dgShow = document.getElementById('modal-datagov-show');
+            if (dgShow) dgShow.textContent = 'Show';
+            const dgVal = document.getElementById('modal-datagov-validation');
+            if (dgVal) dgVal.innerHTML = '';
+        }
+    }
 }
 
 // Cache validator results so the dashboard doesn't burn quota on every render.
@@ -1658,9 +1685,17 @@ async function corsFetch(url, options = {}) {
 // Rewrite a direct upstream URL to go through the Cloudflare Worker proxy.
 // Example: proxyUrl('bls', 'https://api.bls.gov/publicAPI/v2/timeseries/data/')
 //   -> 'https://opengov-proxy.psjs.workers.dev/p/bls/publicAPI/v2/timeseries/data/'
+// Also tolerates being called with just a path ("/foo?x=y") for convenience.
 function proxyUrl(slug, directUrl) {
-    const u = new URL(directUrl);
-    return `${PROXY_BASE}/${slug}${u.pathname}${u.search}`;
+    if (!directUrl) return `${PROXY_BASE}/${slug}/`;
+    try {
+        const u = new URL(directUrl);
+        return `${PROXY_BASE}/${slug}${u.pathname}${u.search}`;
+    } catch {
+        // Not a full URL — treat as a path. Ensure leading slash.
+        const path = directUrl.startsWith('/') ? directUrl : '/' + directUrl;
+        return `${PROXY_BASE}/${slug}${path}`;
+    }
 }
 
 // Fetch via the Worker proxy. Agencies call this on CORS failure when IS_STATIC_HOST.
@@ -2130,8 +2165,17 @@ const DIRECT_API = {
                     }
                 } catch (e) { /* fall through to Flask */ }
             }
-            // For search queries: use spending_by_award with proper filters
-            if (query) {
+            // "Award Search" sub-section: always runs the keyword search.
+            // Prompt for a keyword if the user hasn't typed one (upstream API requires keywords).
+            if (sub === 'award_search' && !query) {
+                return [{
+                    title: 'Award Search — type a keyword above',
+                    description: 'USAspending award search requires a keyword. Try "cybersecurity", "vaccine", or a recipient name in the search box to see contracts and grants.',
+                    date: '', link: 'https://www.usaspending.gov/search/'
+                }];
+            }
+            // For search queries (or explicit award_search sub): use spending_by_award.
+            if (query || sub === 'award_search') {
                 try {
                     const timePeriod = {start_date: opts.dateFrom || "2024-01-01", end_date: opts.dateTo || "2026-12-31"};
                     const payload = {
@@ -2334,12 +2378,26 @@ const DIRECT_API = {
             const tableMap = { water_systems:'WATER_SYSTEM', facilities:'FRS_FACILITY_SITE', toxic_releases:'TRI_FACILITY' };
             const table = tableMap[sub] || 'TRI_FACILITY';
             const directUrl = `https://data.epa.gov/efservice/${table}/ROWS/0:${lim}/JSON`;
+            // Envirofacts sometimes returns UPPER_SNAKE, sometimes lower_snake. Probe both.
+            const pick = (x, ...keys) => {
+                for (const k of keys) {
+                    if (x[k] != null && x[k] !== '') return x[k];
+                    const lk = k.toLowerCase();
+                    if (x[lk] != null && x[lk] !== '') return x[lk];
+                }
+                return '';
+            };
             const parseEpa = (rows) => {
                 if (!Array.isArray(rows)) return [];
                 return rows.slice(0, lim).map(x => ({
-                    title: x.FACILITY_NAME || x.PWS_NAME || x.NAME || `${table} record`,
-                    description: [x.CITY_NAME, x.STATE_CODE, x.PWS_TYPE_CODE, x.INDUSTRY_SECTOR].filter(Boolean).join(' | ').substring(0, 300),
-                    date: x.LAST_REPORTED_DATE || x.FACILITY_UPDATE_DATE || '',
+                    title: pick(x, 'FACILITY_NAME', 'PWS_NAME', 'NAME') || `${table} record`,
+                    description: [
+                        pick(x, 'CITY_NAME', 'CITY'),
+                        pick(x, 'STATE_CODE', 'STATE_ABBR', 'STATE'),
+                        pick(x, 'PWS_TYPE_CODE', 'INDUSTRY_SECTOR', 'PRIMARY_SIC'),
+                        pick(x, 'STREET_ADDRESS', 'ADDRESS')
+                    ].filter(Boolean).join(' | ').substring(0, 300),
+                    date: pick(x, 'LAST_REPORTED_DATE', 'FACILITY_UPDATE_DATE', 'REPORTING_YEAR'),
                     link: 'https://www.epa.gov/'
                 }));
             };
@@ -2888,7 +2946,7 @@ const CLIENT_AGENCIES = [
     {id:'usaspending',name:'USAspending.gov',acronym:'USAspending',description:'Federal spending, contracts, grants, and budget data across all agencies',
      base_url:'https://api.usaspending.gov',auth_required:false,has_search:true,search_placeholder:'Search contracts, grants, recipients...',
      data_categories:['Financial','Contracts','Grants','Federal Spending'],
-     sub_sections:[{id:'top_agencies',name:'Top Agencies by Budget'},{id:'federal_accounts',name:'Federal Accounts'}],
+     sub_sections:[{id:'top_agencies',name:'Top Agencies by Budget'},{id:'federal_accounts',name:'Federal Accounts'},{id:'award_search',name:'Award Search'}],
      endpoints:['Top Agencies','Federal Accounts','Award Search']},
     {id:'noaa',name:'National Oceanic and Atmospheric Administration',acronym:'NOAA',description:'Weather alerts, forecasts, and climate data from the National Weather Service',
      base_url:'https://api.weather.gov',auth_required:false,has_search:false,
