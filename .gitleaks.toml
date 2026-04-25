@@ -1,0 +1,35 @@
+# gitleaks config — override defaults for OpenGovDash.
+# Inherits all default rules (OpenAI, Anthropic, Groq, Gemini, AWS, GCP, Stripe, etc.).
+
+[extend]
+useDefault = true
+
+# Custom: explicitly flag Groq keys even in historical commits.
+[[rules]]
+id = "groq-api-key"
+description = "Groq API key"
+regex = '''gsk_[A-Za-z0-9]{48,}'''
+tags = ["key", "groq"]
+
+# Custom: data.gov keys are 40-char alphanumeric; only flag when adjacent to "api_key"
+# or "DATAGOV" so we don't false-positive on random 40-char strings.
+[[rules]]
+id = "datagov-api-key"
+description = "data.gov API key"
+regex = '''(?i)(api[_-]?key|datagov)[\s:=]+['"]?[A-Za-z0-9]{40}['"]?'''
+tags = ["key", "datagov"]
+# Do NOT flag the literal string DEMO_KEY (it's public).
+[rules.allowlist]
+regexes = ['''DEMO_KEY''']
+
+[allowlist]
+# Exclude archived design notes; they're historical commentary, not active code.
+paths = [
+    '''docs/archive/.*\.md''',
+]
+# Allow provider-name placeholders like "sk-...", "gsk_...", "AIza..." that appear
+# as documentation of key formats throughout the UI.
+regexes = [
+    '''['"](sk-|gsk_|AIza|sk-ant-)\.\.\.['"]''',
+    '''placeholder=['"]?(sk-|gsk_|AIza|sk-ant-)''',
+]

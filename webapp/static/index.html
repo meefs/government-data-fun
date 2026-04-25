@@ -558,6 +558,61 @@
             margin: 0 auto;
             padding: 20px 16px;
         }
+        /* Phase 3 setup wizard */
+        .wiz-progress { display:flex; gap:6px; justify-content:center; margin:12px 0 20px; }
+        .wiz-dot {
+            display:inline-flex; align-items:center; justify-content:center;
+            width:22px; height:22px; font-family:var(--mono); font-size:11px;
+            border:1px solid var(--border); color:var(--text-muted); background:var(--bg-card);
+        }
+        .wiz-dot.wiz-current { color:var(--accent); border-color:var(--accent); }
+        .wiz-dot.wiz-done    { color:var(--accent-success,#10b981); border-color:var(--accent-success,#10b981); }
+        .wiz-track-card {
+            display:block; width:100%; text-align:left;
+            background:var(--bg-card); border:1px solid var(--border); padding:14px;
+            cursor:pointer; color:var(--text-primary); font-family:var(--mono); margin-bottom:10px;
+        }
+        .wiz-track-card:hover { border-color:var(--accent); }
+        .wiz-track-card h4 { margin:0 0 4px; font-size:14px; }
+        .wiz-track-card .note { color:var(--text-muted); font-size:12px; }
+        .wiz-track-card .recs { color:var(--text-secondary); font-size:11px; margin-top:6px; }
+        .wiz-provider-card {
+            background:var(--bg-card); border:1px solid var(--border);
+            padding:12px; margin-bottom:10px;
+        }
+        .wiz-provider-card .wp-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+        .wiz-provider-card .wp-name { font-family:var(--mono); font-size:13px; color:var(--accent); }
+        .wiz-provider-card .wp-price { font-size:11px; color:var(--text-muted); font-family:var(--mono); }
+        .wiz-provider-card .wp-steps { color:var(--text-muted); font-size:11px; line-height:1.6; padding-left:16px; margin:4px 0 8px; }
+        .wiz-provider-card .wp-input-row { position:relative; }
+        .wiz-provider-card input {
+            width:100%; padding:7px 60px 7px 10px; border:1px solid var(--border);
+            background:var(--bg-primary); color:var(--text-primary);
+            font-family:var(--mono); font-size:12px; border-radius:0; outline:none;
+        }
+        .wiz-provider-card .wp-signup {
+            display:inline-block; font-size:11px; color:var(--accent);
+            text-decoration:none; margin-top:4px;
+        }
+        .wiz-provider-card .wp-validation { min-height:14px; margin-top:6px; font-size:11px; }
+        .wiz-footer {
+            display:flex; justify-content:space-between; gap:8px; margin-top:20px;
+            padding-top:16px; border-top:1px solid var(--border);
+        }
+        .wiz-footer .wiz-fill { flex:1; }
+        .wiz-btn {
+            padding:8px 16px; border:1px solid var(--border); background:transparent;
+            color:var(--text-secondary); font-family:var(--mono); font-size:12px;
+            cursor:pointer; border-radius:0;
+        }
+        .wiz-btn:hover { border-color:var(--accent); color:var(--accent); }
+        .wiz-btn-primary { background:var(--accent); color:var(--bg-primary); border-color:var(--accent); }
+        .wiz-btn-primary:hover { filter:brightness(1.1); }
+        .wiz-demo-log {
+            background:var(--bg-primary); border:1px solid var(--border); padding:12px;
+            font-family:var(--mono); font-size:12px; min-height:120px;
+            white-space:pre-wrap; color:var(--text-secondary); margin-top:12px;
+        }
         .welcome-container h2 {
             font-family: var(--mono);
             font-size: 22px;
@@ -1138,80 +1193,12 @@
             <div class="content">
                 <div class="welcome-container">
                     <h2>Welcome to OpenGovDash</h2>
-                    <p class="subtitle">Access 21 government databases with 53+ data endpoints. Browse data freely or set up AI for cross-referencing.</p>
-
-                    <div class="setup-section">
-                        <h3><span class="svg-icon" style="margin-right:6px;color:var(--accent);"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg></span>Browse Data — No Setup Required</h3>
-                        <p>Most government APIs are open access. Click any agency in the sidebar to start exploring data immediately. Agencies marked OPEN require no authentication.</p>
+                    <p class="subtitle">21 government agencies, 53+ endpoints, an AI chat that can actually call them. Pick a setup track to get started — you can change anything later.</p>
+                    <div id="setup-wizard">
+                        <div class="wiz-progress" id="wiz-progress"></div>
+                        <div id="wiz-body"></div>
+                        <div class="wiz-footer" id="wiz-footer"></div>
                     </div>
-
-                    <div class="setup-section">
-                        <h3><span class="svg-icon" style="margin-right:6px;color:var(--accent);"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="10" height="8" rx="1"/><path d="M6 9h0m4 0h0" stroke-linecap="round"/><path d="M8 5V3m-4 4H2m12 0h-2"/></svg></span>AI Chatbot Setup (Optional)</h3>
-                        <p>The AI chatbot can cross-reference data across agencies, answer questions, and build dashboards. Choose your AI provider:</p>
-                        <div class="provider-grid" id="provider-grid">
-                            <div class="provider-card selected" onclick="selectProvider('free')">
-                                <h4>Free Mode</h4>
-                                <div class="price"><span class="free-badge">FREE</span> No API key needed</div>
-                                <div class="desc">Uses free open-source models via HuggingFace. No key needed.</div>
-                            </div>
-                            <div class="provider-card" onclick="selectProvider('openai')">
-                                <h4>OpenAI</h4>
-                                <div class="price">Pay-per-use</div>
-                                <div class="desc">GPT-4o-mini. Best quality responses.</div>
-                            </div>
-                            <div class="provider-card" onclick="selectProvider('groq')">
-                                <h4>Groq</h4>
-                                <div class="price"><span class="free-badge">FREE TIER</span></div>
-                                <div class="desc">Llama 3 70B. Very fast inference.</div>
-                            </div>
-                            <div class="provider-card" onclick="selectProvider('gemini')">
-                                <h4>Google Gemini</h4>
-                                <div class="price"><span class="free-badge">FREE TIER</span></div>
-                                <div class="desc">Gemini 2.0 Flash. Google AI.</div>
-                            </div>
-                            <div class="provider-card" onclick="selectProvider('claude')">
-                                <h4>Anthropic Claude</h4>
-                                <div class="price">Pay-per-use</div>
-                                <div class="desc">Claude Sonnet. Great at analysis.</div>
-                            </div>
-                        </div>
-                        <div id="provider-key-input" style="margin-top:12px;display:none;">
-                            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;" id="provider-key-label">OpenAI API Key</label>
-                            <input id="welcome-api-key" type="password" placeholder="sk-..." style="width:100%;padding:8px 12px;border-radius:0;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:13px;outline:none;">
-                        </div>
-                    </div>
-
-                    <div class="setup-section">
-                        <h3><span class="svg-icon" style="margin-right:6px;color:var(--accent);"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="6.5" r="2.5"/><path d="M7.5 8.5l5 5m-2-1l2 1-1-2"/></svg></span>Quick Setup: Add More AI Providers (Optional)</h3>
-                        <p style="font-size:12px;margin-bottom:10px;">Add up to 3 providers for reliable access. Start with Free Mode — upgrade anytime.</p>
-                        <div id="multi-provider-setup" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">
-                            <div class="provider-setup-option" data-provider="openai">
-                                <div class="pso-name">OpenAI</div>
-                                <div class="pso-status" style="font-size:10px;color:var(--text-muted);">Not set</div>
-                                <button class="pso-btn" onclick="startMultiProviderSetup('openai')" style="font-size:10px;padding:4px 8px;margin-top:4px;">Add</button>
-                            </div>
-                            <div class="provider-setup-option" data-provider="groq">
-                                <div class="pso-name">Groq</div>
-                                <div class="pso-status" style="font-size:10px;color:var(--text-muted);">Not set</div>
-                                <button class="pso-btn" onclick="startMultiProviderSetup('groq')" style="font-size:10px;padding:4px 8px;margin-top:4px;">Add</button>
-                            </div>
-                            <div class="provider-setup-option" data-provider="gemini">
-                                <div class="pso-name">Gemini</div>
-                                <div class="pso-status" style="font-size:10px;color:var(--text-muted);">Not set</div>
-                                <button class="pso-btn" onclick="startMultiProviderSetup('gemini')" style="font-size:10px;padding:4px 8px;margin-top:4px;">Add</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="setup-section">
-                        <h3><span class="svg-icon" style="margin-right:6px;color:var(--accent);"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="6.5" r="2.5"/><path d="M7.5 8.5l5 5m-2-1l2 1-1-2"/></svg></span>Optional: Enhanced API Keys</h3>
-                        <p>Some agencies offer better access with a <code>data.gov</code> API key. Get one free at <a href="https://api.data.gov/signup/" target="_blank" style="color:var(--accent)">api.data.gov/signup</a></p>
-                        <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;margin-top:8px;">data.gov API Key (optional)</label>
-                        <input id="welcome-datagov-key" type="text" placeholder="Your data.gov API key" style="width:100%;padding:8px 12px;border-radius:0;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:13px;outline:none;">
-                    </div>
-
-                    <button class="btn-primary" onclick="completeSetup()">Start Exploring &#8594;</button>
-                    <button class="btn-primary" onclick="completeSetup()" style="background:transparent;border:1px solid var(--border);color:var(--text-secondary);margin-left:8px;">Skip Setup</button>
                 </div>
             </div>
         </div>
@@ -1320,13 +1307,8 @@ Free mode is active — no API key needed, just start chatting. For alternate pr
     </div>
 </div>
 
-<!-- Provider Setup Modal -->
-<div id="provider-setup-modal" class="modal-overlay" style="display:none;">
-    <div class="modal" style="max-width:450px;">
-        <h3 style="margin-bottom:16px;">Set up Provider</h3>
-        <div class="setup-content"></div>
-    </div>
-</div>
+<!-- Provider Setup Modal retired in Phase 3; #api-key-modal handles everything. -->
+
 
 <script>
 // Minimalist SVG icon system
@@ -3072,9 +3054,9 @@ async function init() {
 
     renderSidebar();
     renderOverview();
-    // Show welcome page on first visit
+    // Show welcome page on first visit (starts the Phase 3 wizard).
     if (!sessionStorage.getItem('ogd_setup_done')) {
-        setActivePage('welcome');
+        startWizard();
     }
     // Fetch live previews in background
     fetchOverviewPreviews();
@@ -3243,7 +3225,340 @@ function setActivePage(page) {
     document.getElementById('page-chat').style.display = page === 'chat' ? 'flex' : 'none';
 }
 
-function showWelcome() { setActivePage('welcome'); }
+function showWelcome() { startWizard(); }
+
+// ========== GUIDED SETUP WIZARD (Phase 3) ==========
+
+const SETUP_TRACKS = {
+    free: {
+        label: 'Free AI',
+        summary: 'No credit card. Uses free tiers. Groq is fastest; Gemini is a solid backup; HuggingFace is the zero-config fallback.',
+        providers: ['groq', 'gemini'],   // primary + secondary to offer
+        primary: 'groq',
+        fallback: 'free',                 // always-available fallback provider id
+    },
+    quality: {
+        label: 'Best Quality',
+        summary: 'Pay-per-use. Highest answer quality and most reliable tool-use. Pick one.',
+        providers: ['claude', 'openai'],
+        primary: 'claude',
+        fallback: null,
+    },
+    dataonly: {
+        label: 'Just Data',
+        summary: 'Skip AI entirely. Browse raw government data from 21 agencies. You can enable AI any time from the API Key button.',
+        providers: [],
+        primary: null,
+        fallback: null,
+    },
+};
+
+const PROVIDER_DOCS = {
+    groq: {
+        label: 'Groq (Llama 3.3 70B)',
+        price: 'FREE · 30 req/min · 14.4k/day',
+        signup: 'https://console.groq.com/keys',
+        format: 'gsk_...',
+        steps: ['Sign up at console.groq.com (free; no card)', 'Create an API key', 'Paste below'],
+        toolUse: true,
+    },
+    gemini: {
+        label: 'Google Gemini Flash',
+        price: 'FREE · 15 req/min · 1.5k/day',
+        signup: 'https://aistudio.google.com/app/apikey',
+        format: 'AIza...',
+        steps: ['Open Google AI Studio (no card required)', 'Click Create API key', 'Paste below'],
+        toolUse: true,
+    },
+    openai: {
+        label: 'OpenAI GPT-4o-mini',
+        price: '~$0.15 per 1M input tokens',
+        signup: 'https://platform.openai.com/api-keys',
+        format: 'sk-... or sk-proj-...',
+        steps: ['platform.openai.com → Add at least $5 prepaid credits', 'Create a secret key', 'Paste below'],
+        toolUse: true,
+    },
+    claude: {
+        label: 'Anthropic Claude Sonnet',
+        price: '~$3 / $15 per 1M tokens (in/out)',
+        signup: 'https://console.anthropic.com/settings/keys',
+        format: 'sk-ant-...',
+        steps: ['console.anthropic.com → Add credits', 'Create an API key', 'Paste below'],
+        toolUse: true,
+    },
+    free: {
+        label: 'HuggingFace Serverless',
+        price: 'FREE · no signup',
+        signup: null,
+        format: null,
+        steps: ['No configuration needed', 'Free, but may throttle or be slow under load'],
+        toolUse: false,
+    },
+    datagov: {
+        label: 'data.gov API key',
+        price: 'FREE · unlocks SAM.gov and raises NASA/FEC rate limits',
+        signup: 'https://api.data.gov/signup/',
+        format: '40-char alphanumeric',
+        steps: ['api.data.gov/signup → enter email', 'Paste the key that arrives in your inbox'],
+    },
+};
+
+const WIZARD_STEPS = ['track', 'ai-keys', 'data-keys', 'verify', 'done'];
+const wizardState = { step: 'track', track: null };
+
+function startWizard(trackId = null) {
+    if (trackId && SETUP_TRACKS[trackId]) {
+        wizardState.track = trackId;
+        wizardState.step = trackId === 'dataonly' ? 'data-keys' : 'ai-keys';
+    } else {
+        wizardState.track = null;
+        wizardState.step = 'track';
+    }
+    setActivePage('welcome');
+    renderWizardStep();
+}
+
+function gotoWizardStep(stepId) {
+    wizardState.step = stepId;
+    renderWizardStep();
+}
+
+function wizardProgressHtml() {
+    const active = WIZARD_STEPS.indexOf(wizardState.step);
+    return WIZARD_STEPS.map((s, i) => {
+        const state = i < active ? 'done' : i === active ? 'current' : 'todo';
+        const label = { track:'Track', 'ai-keys':'AI Keys', 'data-keys':'Data', verify:'Verify', done:'Done' }[s];
+        return `<span class="wiz-dot wiz-${state}" title="${label}">${i+1}</span>`;
+    }).join('');
+}
+
+function renderWizardStep() {
+    const progress = document.getElementById('wiz-progress');
+    const body = document.getElementById('wiz-body');
+    const footer = document.getElementById('wiz-footer');
+    if (!progress || !body || !footer) return;
+    progress.innerHTML = wizardProgressHtml();
+    const r = { track: renderWizTrack, 'ai-keys': renderWizAiKeys, 'data-keys': renderWizDataKeys, verify: renderWizVerify, done: renderWizDone };
+    (r[wizardState.step] || renderWizTrack)(body, footer);
+}
+
+function renderWizTrack(body, footer) {
+    body.innerHTML = `
+        <h3 style="margin-bottom:10px;font-size:14px;">How do you want to get started?</h3>
+        <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;">Pick a track. You can change or add providers any time from the API Key button.</p>
+        ${Object.entries(SETUP_TRACKS).map(([id, t]) => `
+            <button class="wiz-track-card" onclick="wizardSelectTrack('${id}')">
+                <h4>${t.label}</h4>
+                <div class="note">${t.summary}</div>
+                ${t.providers.length ? `<div class="recs">Recommended: ${t.providers.map(p => PROVIDER_DOCS[p]?.label || p).join(' · ')}</div>` : ''}
+            </button>
+        `).join('')}
+    `;
+    footer.innerHTML = `
+        <span class="wiz-fill"></span>
+        <button class="wiz-btn" onclick="wizardSkip()">Skip · just show me the data</button>
+    `;
+}
+
+function wizardSelectTrack(trackId) {
+    wizardState.track = trackId;
+    wizardState.step = trackId === 'dataonly' ? 'data-keys' : 'ai-keys';
+    renderWizardStep();
+}
+
+function renderWizAiKeys(body, footer) {
+    const track = SETUP_TRACKS[wizardState.track] || SETUP_TRACKS.free;
+    const providers = track.providers;
+    body.innerHTML = `
+        <h3 style="margin-bottom:6px;font-size:14px;">Paste API keys for ${track.label}</h3>
+        <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;">All fields are optional. Keys stay in your browser (localStorage). Inline validation runs as you paste.</p>
+        ${providers.map(p => renderWizProviderCard(p)).join('')}
+        ${track.fallback ? `<p style="color:var(--text-muted);font-size:11px;margin-top:8px;">If nothing is configured, the app falls back to <strong>${PROVIDER_DOCS[track.fallback].label}</strong> automatically.</p>` : ''}
+    `;
+    footer.innerHTML = `
+        <button class="wiz-btn" onclick="gotoWizardStep('track')">← Back</button>
+        <span class="wiz-fill"></span>
+        <button class="wiz-btn" onclick="gotoWizardStep('data-keys')">Skip</button>
+        <button class="wiz-btn wiz-btn-primary" onclick="wizardSaveAiKeys()">Save & continue →</button>
+    `;
+    // Hook inline validation on every rendered input.
+    providers.forEach(p => {
+        const input = document.getElementById(`wiz-${p}-input`);
+        const target = document.getElementById(`wiz-${p}-validation`);
+        if (input && target) input.addEventListener('input', () => onKeyInputDebounced(p, input, target));
+    });
+}
+
+function renderWizProviderCard(provider) {
+    const doc = PROVIDER_DOCS[provider];
+    if (!doc) return '';
+    const existing = getProviderKey(provider);
+    return `
+        <div class="wiz-provider-card" data-provider="${provider}">
+            <div class="wp-head">
+                <span class="wp-name">${doc.label}</span>
+                <span class="wp-price">${doc.price}</span>
+            </div>
+            ${doc.steps ? `<ol class="wp-steps">${doc.steps.map(s => `<li>${s}</li>`).join('')}</ol>` : ''}
+            ${doc.signup ? `<a class="wp-signup" target="_blank" href="${doc.signup}">Get ${doc.format || 'a key'} →</a>` : ''}
+            ${doc.format ? `
+                <div class="wp-input-row" style="margin-top:8px;">
+                    <input id="wiz-${provider}-input" type="password" placeholder="${doc.format}" value="${existing ? existing.replace(/"/g,'&quot;') : ''}">
+                    <button class="wiz-btn" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);padding:3px 8px;font-size:10px;"
+                        onclick="(function(b){const i=document.getElementById('wiz-${provider}-input');if(i.type==='password'){i.type='text';b.textContent='Hide';}else{i.type='password';b.textContent='Show';}})(this)">Show</button>
+                </div>
+                <div id="wiz-${provider}-validation" class="wp-validation">${existing ? `<span style="color:var(--accent-success,#10b981);">● Already saved · ${maskKey(existing)}</span>` : ''}</div>
+            ` : ''}
+        </div>
+    `;
+}
+
+async function wizardSaveAiKeys() {
+    const track = SETUP_TRACKS[wizardState.track] || SETUP_TRACKS.free;
+    // Collect all entered values, validate in parallel, save the ones that look OK.
+    const entries = track.providers.map(p => ({
+        provider: p,
+        key: (document.getElementById(`wiz-${p}-input`)?.value || '').trim(),
+    })).filter(e => e.key);
+
+    if (entries.length === 0) {
+        // Nothing entered — advance using the track's fallback (e.g. HuggingFace free).
+        if (track.fallback) { aiProvider = track.fallback; try { localStorage.setItem('ai_provider', aiProvider); } catch(e){} }
+        updateApiState();
+        gotoWizardStep('data-keys');
+        return;
+    }
+    const footer = document.getElementById('wiz-footer');
+    if (footer) footer.innerHTML += `<span style="color:var(--text-muted);font-size:11px;margin-left:8px;">Validating…</span>`;
+    const results = await Promise.all(entries.map(async e => {
+        const res = await validateKey(e.provider, e.key);
+        return { ...e, res };
+    }));
+    for (const r of results) {
+        if (r.res.ok || r.res.reason !== 'unauthorized') {
+            setProviderKey(r.provider, r.key);
+        } else {
+            const keep = confirm(`${PROVIDER_DOCS[r.provider].label}: the provider rejected this key (401/403). Save anyway?`);
+            if (keep) setProviderKey(r.provider, r.key);
+        }
+    }
+    // Choose active provider: first successfully-saved; else track primary; else fallback.
+    const firstSaved = results.find(r => getProviderKey(r.provider));
+    const chosen = firstSaved?.provider || track.primary || track.fallback || 'free';
+    aiProvider = chosen;
+    try { localStorage.setItem('ai_provider', aiProvider); } catch(e) {}
+    updateApiState();
+    gotoWizardStep('data-keys');
+}
+
+function renderWizDataKeys(body, footer) {
+    body.innerHTML = `
+        <h3 style="margin-bottom:6px;font-size:14px;">Unlock extra agency data (optional)</h3>
+        <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;">A free data.gov key unlocks SAM.gov contract opportunities and higher rate limits on NASA and FEC. Skip if you don't need those.</p>
+        ${renderWizProviderCard('datagov')}
+    `;
+    footer.innerHTML = `
+        <button class="wiz-btn" onclick="gotoWizardStep('${wizardState.track === 'dataonly' ? 'track' : 'ai-keys'}')">← Back</button>
+        <span class="wiz-fill"></span>
+        <button class="wiz-btn" onclick="gotoWizardStep('verify')">Skip</button>
+        <button class="wiz-btn wiz-btn-primary" onclick="wizardSaveDataKeys()">Save & verify →</button>
+    `;
+    const input = document.getElementById('wiz-datagov-input');
+    const target = document.getElementById('wiz-datagov-validation');
+    if (input && target) input.addEventListener('input', () => onKeyInputDebounced('datagov', input, target));
+}
+
+async function wizardSaveDataKeys() {
+    const key = (document.getElementById('wiz-datagov-input')?.value || '').trim();
+    if (key && key !== datagovKey) {
+        const res = await validateKey('datagov', key);
+        if (!res.ok && res.reason === 'unauthorized') {
+            const keep = confirm('data.gov rejected this key. Save anyway?');
+            if (!keep) return;
+        }
+        setProviderKey('datagov', key);
+    }
+    gotoWizardStep('verify');
+}
+
+function renderWizVerify(body, footer) {
+    body.innerHTML = `
+        <h3 style="margin-bottom:6px;font-size:14px;">Let's verify the connection</h3>
+        <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;">We'll run one small call through your active provider (<strong>${aiProvider}</strong>) and show the raw response.</p>
+        <div class="wiz-demo-log" id="wiz-demo-log">Click "Run demo" to send a tiny request.</div>
+    `;
+    footer.innerHTML = `
+        <button class="wiz-btn" onclick="gotoWizardStep('data-keys')">← Back</button>
+        <span class="wiz-fill"></span>
+        <button class="wiz-btn" onclick="gotoWizardStep('done')">Skip →</button>
+        <button class="wiz-btn wiz-btn-primary" onclick="runWizardDemo()">Run demo</button>
+    `;
+}
+
+async function runWizardDemo() {
+    const log = document.getElementById('wiz-demo-log');
+    if (!log) return;
+    const track = SETUP_TRACKS[wizardState.track];
+    if (track && track.label === 'Just Data') {
+        log.textContent = 'AI is disabled for the Just Data track — skipping demo.';
+        return;
+    }
+    log.textContent = `> Sending "Reply with exactly five words." to ${aiProvider}…\n`;
+    const messages = [
+        { role: 'system', content: 'You are a terse assistant. Always reply in exactly five words.' },
+        { role: 'user', content: 'Say hello.' },
+    ];
+    try {
+        const t0 = Date.now();
+        const data = await callAI(messages);
+        const dt = Date.now() - t0;
+        const reply = extractReplyText(data) || JSON.stringify(data).slice(0, 400);
+        log.textContent = `> Provider: ${aiProvider}\n> Latency: ${dt}ms\n\n${reply}`;
+    } catch (e) {
+        log.textContent = `> Provider: ${aiProvider}\n> ERROR: ${e.message || e}\n\nYou can continue anyway — the chat will show the same error.`;
+    }
+}
+
+function extractReplyText(data) {
+    // Probe the common shapes returned by OpenAI/Groq/Claude/Gemini.
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    if (data.choices?.[0]?.message?.content) return data.choices[0].message.content;
+    if (data.content?.[0]?.text) return data.content[0].text;
+    if (data.candidates?.[0]?.content?.parts?.[0]?.text) return data.candidates[0].content.parts[0].text;
+    if (data.reply) return data.reply;
+    return '';
+}
+
+function renderWizDone(body, footer) {
+    body.innerHTML = `
+        <h3 style="margin-bottom:6px;font-size:14px;">You're set up</h3>
+        <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;">Everything is saved in your browser. Pick where you want to go next.</p>
+        <div style="display:grid;gap:8px;">
+            <button class="wiz-track-card" onclick="finishWizard('overview')"><h4>Browse the overview</h4><div class="note">See what's in all 21 agencies at a glance.</div></button>
+            <button class="wiz-track-card" onclick="finishWizard('chat')"><h4>Open the AI chat</h4><div class="note">Ask it to search and cross-reference data for you.</div></button>
+            <button class="wiz-track-card" onclick="finishWizard('agency')"><h4>Jump straight into an agency</h4><div class="note">Pick any agency from the left sidebar.</div></button>
+        </div>
+    `;
+    footer.innerHTML = `
+        <button class="wiz-btn" onclick="gotoWizardStep('verify')">← Back</button>
+        <span class="wiz-fill"></span>
+        <button class="wiz-btn wiz-btn-primary" onclick="finishWizard('overview')">Done</button>
+    `;
+}
+
+function finishWizard(where) {
+    try { sessionStorage.setItem('ogd_setup_done', '1'); } catch(e) {}
+    updateApiState();
+    if (where === 'chat') showChat();
+    else if (where === 'agency') showOverview();
+    else showOverview();
+}
+
+function wizardSkip() {
+    try { sessionStorage.setItem('ogd_setup_done', '1'); } catch(e) {}
+    showOverview();
+}
 function showOverview() { setActivePage('overview'); }
 function showChat() {
     setActivePage('chat');
@@ -3251,54 +3566,10 @@ function showChat() {
     document.getElementById('chat-provider-badge').textContent = `Powered by ${names[aiProvider] || 'AI'}`;
 }
 
-// Welcome page functions
-function selectProvider(provider) {
-    aiProvider = provider;
-    document.querySelectorAll('.provider-card').forEach(c => c.classList.remove('selected'));
-    event.currentTarget.classList.add('selected');
-    const keyInput = document.getElementById('provider-key-input');
-    const keyLabel = document.getElementById('provider-key-label');
-    const keyField = document.getElementById('welcome-api-key');
-    if (provider === 'free') {
-        keyInput.style.display = 'none';
-    } else {
-        keyInput.style.display = 'block';
-        const labels = { openai: 'OpenAI API Key', groq: 'Groq API Key', gemini: 'Google Gemini API Key', claude: 'Anthropic API Key' };
-        const placeholders = { openai: 'sk-...', groq: 'gsk_...', gemini: 'AI...', claude: 'sk-ant-...' };
-        keyLabel.textContent = labels[provider] || 'API Key';
-        keyField.placeholder = placeholders[provider] || 'Enter API key...';
-    }
-}
+// Old welcome-page functions retired by Phase 3 wizard.
+// (selectProvider / completeSetup / showProviderSetupModal targeted DOM nodes that no
+// longer exist; the wizard + rich #api-key-modal now cover every entry point.)
 
-function completeSetup() {
-    const keyField = document.getElementById('welcome-api-key');
-    const dgField = document.getElementById('welcome-datagov-key');
-    if (keyField && keyField.value.trim()) {
-        const key = keyField.value.trim();
-        if (aiProvider === 'openai') {
-            openaiKey = key;
-            try { localStorage.setItem('openai_key', key); } catch(e) {}
-        } else if (aiProvider === 'groq') {
-            groqKey = key;
-            try { localStorage.setItem('groq_key', key); } catch(e) {}
-        } else if (aiProvider === 'gemini') {
-            geminiKey = key;
-            try { localStorage.setItem('gemini_key', key); } catch(e) {}
-        } else if (aiProvider === 'claude') {
-            claudeKey = key;
-            try { localStorage.setItem('claude_key', key); } catch(e) {}
-        }
-    }
-    if (dgField && dgField.value.trim()) {
-        datagovKey = dgField.value.trim();
-        try { localStorage.setItem('datagov_key', dgField.value.trim()); } catch(e) {}
-    }
-    // Save selected provider
-    try { localStorage.setItem('ai_provider', aiProvider); } catch(e) {}
-    updateApiState();
-    try { sessionStorage.setItem('ogd_setup_done', '1'); } catch(e) {}
-    showOverview();
-}
 
 // Agency selection
 let agencyViewMode = 'landing'; // 'landing' or 'data'
@@ -4166,7 +4437,7 @@ async function sendChat() {
     // Check if selected provider is ready
     updateApiState();
     if (!isProviderReady(aiProvider)) {
-        showProviderSetupModal(aiProvider);
+        showApiKeyModal();
         return;
     }
 
@@ -4389,101 +4660,24 @@ async function saveApiKeys() {
     }
 }
 
-// Provider setup modal - guides user through getting API keys
+// Legacy shims: route anything that still calls the old provider-setup-modal to
+// the rich #api-key-modal (Phase 2). Eliminates the "two modals" UX fork.
 function showProviderSetupModal(provider) {
-    const state = apiState[provider];
-    if (!state || provider === 'free') return; // Free doesn't need setup
-
-    const modal = document.getElementById('provider-setup-modal');
-    const title = modal.querySelector('h3');
-    const content = modal.querySelector('.setup-content');
-
-    title.textContent = `Set up ${state.name}`;
-
-    let html = `<p style="margin-bottom:12px;color:var(--text-secondary);font-size:13px;">Follow these steps to get your API key:</p>`;
-    html += `<ol style="margin:0;padding-left:20px;color:var(--text-secondary);font-size:12px;line-height:1.8;">`;
-    for (const step of state.setupSteps) {
-        html += `<li>${step}</li>`;
+    if (provider && provider !== 'free') {
+        aiProvider = provider;
+        try { localStorage.setItem('ai_provider', provider); } catch(e) {}
     }
-    html += `</ol>`;
-    html += `<div style="margin-top:16px;padding:12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:0;">
-        <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:6px;text-transform:uppercase;">Paste your API key</label>
-        <input id="setup-key-input" type="password" placeholder="Paste key here..." style="width:100%;padding:8px 12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;border-radius:0;outline:none;">
-    </div>`;
-    html += `<div style="margin-top:12px;display:flex;gap:8px;">
-        <button onclick="saveSetupKey('${provider}')" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--bg-primary);border:none;border-radius:0;cursor:pointer;font-size:12px;font-weight:500;">Save Key</button>
-        <button onclick="closeProviderSetupModal()" style="flex:1;padding:8px 12px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);border-radius:0;cursor:pointer;font-size:12px;">Cancel</button>
-    </div>`;
-    html += `<a href="${state.setupUrl}" target="_blank" style="display:block;margin-top:12px;text-align:center;color:var(--accent);text-decoration:none;font-size:11px;">Open ${state.name} console →</a>`;
-
-    content.innerHTML = html;
-    modal.style.display = 'flex';
+    showApiKeyModal();
 }
-
-function closeProviderSetupModal() {
-    document.getElementById('provider-setup-modal').style.display = 'none';
-}
-
-async function saveSetupKey(provider) {
-    const key = document.getElementById('setup-key-input').value.trim();
-    if (!key) { alert('Please paste your API key'); return; }
-
-    const previousKey = getProviderKey(provider);
-
-    const btn = document.querySelector(`#provider-setup-modal button[onclick="saveSetupKey('${provider}')"]`);
-    const origText = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = 'Validating…'; }
-
-    const res = await validateKey(provider, key);
-    if (!res.ok && res.reason === 'unauthorized') {
-        if (btn) { btn.disabled = false; btn.textContent = origText; }
-        const proceed = confirm('The provider rejected this key (401/403). Save anyway?');
-        if (!proceed) return;
-    }
-    if (btn) { btn.disabled = false; btn.textContent = origText; }
-
-    setProviderKey(provider, key);
-    aiProvider = provider;
-    try { localStorage.setItem('ai_provider', provider); } catch(e) {}
-
-    updateApiState();
-    renderKeyHealthPanels();
-    closeProviderSetupModal();
-
-    const action = previousKey ? 'updated' : 'configured';
-    const note = (res.ok && res.warn === 'rate_limited_now') ? ' (currently rate-limited)'
-               : (!res.ok && res.reason === 'unauthorized') ? ' — warning: provider rejected this key'
-               : '';
-    appendChat('assistant', `✓ ${apiState[provider].name} is now ${action}${note}. Ready to chat!`, {noHistory: true});
-}
-
-// Multi-provider setup from welcome page
-function startMultiProviderSetup(provider) {
-    showProviderSetupModal(provider);
-}
+function closeProviderSetupModal() { closeApiKeyModal(); }
+function startMultiProviderSetup(provider) { showProviderSetupModal(provider); }
 
 // Update welcome page provider status badges
-function refreshMultiProviderStatus() {
-    updateApiState();
-    document.querySelectorAll('.provider-setup-option').forEach(el => {
-        const prov = el.dataset.provider;
-        const status = el.querySelector('.pso-status');
-        const btn = el.querySelector('.pso-btn');
-        if (apiState[prov]?.configured) {
-            status.textContent = '✓ Added';
-            status.style.color = 'var(--success)';
-            btn.textContent = 'Update';
-        } else {
-            status.textContent = 'Not set';
-            status.style.color = 'var(--text-muted)';
-            btn.textContent = 'Add';
-        }
-    });
-}
+// Legacy no-op retained so older inline callers don't throw.
+function refreshMultiProviderStatus() { updateApiState(); }
 
 // Start
 init();
-refreshMultiProviderStatus();
 </script>
 </body>
 </html>
