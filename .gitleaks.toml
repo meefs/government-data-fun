@@ -23,6 +23,15 @@ tags = ["key", "datagov"]
 regexes = ['''DEMO_KEY''']
 
 [allowlist]
+# Known historical leak: a Groq key (gsk_Cj0BSyl…tWrGP) was committed on 2026-02-16
+# in the two commits below and removed in a later commit. The key was revoked
+# (Groq auto-revokes keys flagged by GitHub secret scanning). We deliberately do NOT
+# rewrite history; instead we allowlist exactly these two commits so the scanner keeps
+# protecting against NEW leaks without permanently failing on this dead one.
+commits = [
+    "21b00237e4989ccf2447cb0a2fef0cd60bb3506f",
+    "6787be5d523980921cc12159ca51e1e25bd90928",
+]
 # Exclude archived design notes; they're historical commentary, not active code.
 paths = [
     '''docs/archive/.*\.md''',
