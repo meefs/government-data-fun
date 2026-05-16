@@ -4235,18 +4235,9 @@ function getActiveKey() {
     return '';
 }
 
-function buildMessages(msg) {
-    let systemContent = CHAT_SYSTEM_PROMPT;
-    if (currentData.length > 0) {
-        systemContent += `\n\nCurrent data context:\nAgency: ${currentAgency?.name}\nSample data: ${JSON.stringify(currentData.slice(0,3)).substring(0,1500)}`;
-    }
-    const messages = [{role:'system', content: systemContent}];
-    for (const h of chatHistory.slice(-10)) {
-        messages.push({role: h.role, content: h.content});
-    }
-    messages.push({role:'user', content: msg});
-    return messages;
-}
+// (buildMessages removed in Phase 4 — superseded by buildAgentMessages, which adds
+//  tool guidance. The agent loop fetches live data via tools instead of pre-injecting
+//  currentData, so the old "current data context" shim is no longer needed.)
 
 // Standalone fallback callers for auto-retry on 429
 async function callAI_free(messages) {
@@ -4429,12 +4420,294 @@ async function callAI(messages) {
     throw new Error(`Unknown provider: ${provider}`);
 }
 
+// ========== TOOL-USE AGENT (Phase 4) ==========
+// One tool per agency, generated from the live `agencies` list so the registry
+// always matches what the data layer can actually fetch. Plus a cross_reference
+// meta-tool that fans out across agencies in parallel.
+
+let _toolRegistry = null;
+function getToolRegistry() {
+    if (_toolRegistry) return _toolRegistry;
+    const tools = [];
+    for (const a of agencies) {
+        if (!DIRECT_API[a.id]?.fetch) continue;   // only expose agencies we can actually call
+        const subs = (a.sub_sections || []).map(s => s.id).filter(Boolean);
+        const props = {
+            query: { type: 'string', description: a.search_placeholder || 'Search keyword or term' },
+            limit: { type: 'integer', description: 'Max results (1-50)', default: 10 },
+            date_from: { type: 'string', description: 'Start date YYYY-MM-DD (only some agencies support this)' },
+            date_to: { type: 'string', description: 'End date YYYY-MM-DD' },
+        };
+        if (subs.length) props.sub_section = { type: 'string', enum: subs, description: 'Which dataset within this agency' };
+        tools.push({
+            name: `query_${a.id}`,
+            description: `${a.name} (${a.acronym || a.id}). ${a.description || ''}`.trim()
+                + (subs.length ? ` Datasets: ${subs.join(', ')}.` : ''),
+            input_schema: { type: 'object', properties: props, required: [] },
+            run: async (args) => {
+                const fn = DIRECT_API[a.id].fetch;
+                const sub = args.sub_section || (a.sub_sections?.[0]?.id) || '';
+                const opts = {
+                    limit: Math.min(Math.max(parseInt(args.limit) || 10, 1), 50),
+                    dateFrom: args.date_from || '', dateTo: args.date_to || '',
+                };
+                const rows = await fn(sub, args.query || '', opts);
+                return { agency: a.id, sub_section: sub, count: Array.isArray(rows) ? rows.length : 0, results: rows };
+            },
+        });
+    }
+    tools.push({
+        name: 'cross_reference',
+        description: 'Run one keyword across MULTIPLE agencies in parallel and return grouped results. Use this for "compare/connect X across agencies" questions instead of calling each agency separately.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agency_ids: { type: 'array', items: { type: 'string' }, description: 'Agency ids, e.g. ["sec","fda","fcc"]. Max 6.' },
+                query: { type: 'string', description: 'The keyword to search across all of them' },
+                limit: { type: 'integer', description: 'Results per agency (1-20)', default: 5 },
+            },
+            required: ['agency_ids', 'query'],
+        },
+        run: async (args) => {
+            const ids = (args.agency_ids || []).slice(0, 6);
+            const lim = Math.min(Math.max(parseInt(args.limit) || 5, 1), 20);
+            const settled = await Promise.allSettled(ids.map(async id => {
+                const fn = DIRECT_API[id]?.fetch;
+                if (!fn) return { id, error: 'unknown agency' };
+                const a = agencies.find(x => x.id === id);
+                const sub = a?.sub_sections?.[0]?.id || '';
+                const rows = await fn(sub, args.query || '', { limit: lim });
+                return { id, count: Array.isArray(rows) ? rows.length : 0, results: rows };
+            }));
+            const out = {};
+            settled.forEach((s, i) => { out[ids[i]] = s.status === 'fulfilled' ? s.value : { error: String(s.reason) }; });
+            return out;
+        },
+    });
+    _toolRegistry = tools;
+    return tools;
+}
+
+const MAX_TOOL_ITERATIONS = 5;
+
+// Cap each tool result so a big fetch can't blow the model's context window.
+function truncateForContext(obj, max = 3500) {
+    let s;
+    try { s = JSON.stringify(obj); } catch { s = String(obj); }
+    if (s.length <= max) return s;
+    return s.slice(0, max) + `…[truncated ${s.length - max} chars]`;
+}
+
+// --- Provider tool-schema translation ---
+function toolsForProvider(provider, tools) {
+    if (provider === 'openai' || provider === 'groq') {
+        return tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+    }
+    if (provider === 'claude') {
+        return tools.map(t => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
+    }
+    if (provider === 'gemini') {
+        return [{ functionDeclarations: tools.map(t => ({ name: t.name, description: t.description, parameters: geminiSchema(t.input_schema) })) }];
+    }
+    return null; // free → ReAct prompt fallback
+}
+// Gemini rejects JSON-Schema keywords like "default"; strip to the subset it accepts.
+function geminiSchema(schema) {
+    if (Array.isArray(schema)) return schema.map(geminiSchema);
+    if (schema && typeof schema === 'object') {
+        const out = {};
+        for (const [k, v] of Object.entries(schema)) {
+            if (k === 'default') continue;
+            out[k] = geminiSchema(v);
+        }
+        return out;
+    }
+    return schema;
+}
+
+const AGENT_SYSTEM_PROMPT = `You are the OpenGovDash research agent. You have tools that fetch LIVE data from 21 US government agencies. ALWAYS use a tool to get real data before answering a factual question — never guess or rely on training data for current records.
+
+${CHAT_SYSTEM_PROMPT}
+
+Tool guidance:
+- Pick the most specific agency tool. Use cross_reference when the user wants the same term compared across several agencies.
+- Keep limit small (5-10) unless the user asks for more.
+- After tools return, synthesize a concise answer and cite which agency/dataset each fact came from.
+- If a tool returns an error or empty results, say so plainly and suggest an alternative.`;
+
+function buildAgentMessages(userMsg) {
+    const messages = [{ role: 'system', content: AGENT_SYSTEM_PROMPT }];
+    for (const h of chatHistory.slice(-8)) messages.push({ role: h.role, content: h.content });
+    messages.push({ role: 'user', content: userMsg });
+    return messages;
+}
+
+// --- One model call, with tools, normalized to {text, toolCalls[], raw} ---
+async function callModelWithTools(provider, messages, tools) {
+    const providerTools = toolsForProvider(provider, tools);
+
+    if (provider === 'openai' || provider === 'groq') {
+        const key = provider === 'openai' ? openaiKey : groqKey;
+        const url = provider === 'openai' ? 'https://api.openai.com/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
+        const model = provider === 'openai' ? 'gpt-4o-mini' : 'llama-3.3-70b-versatile';
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+            body: JSON.stringify({ model, messages, tools: providerTools, tool_choice: 'auto', max_tokens: 2000, temperature: 0.4 }),
+        });
+        if (!resp.ok) { const e = await resp.json().catch(() => ({})); return { error: { message: `${provider} ${resp.status}: ${e?.error?.message || resp.statusText}` } }; }
+        const data = await resp.json();
+        const m = data.choices?.[0]?.message || {};
+        const toolCalls = (m.tool_calls || []).map(tc => ({
+            id: tc.id, name: tc.function?.name,
+            args: safeJsonParse(tc.function?.arguments) || {},
+        }));
+        return { text: m.content || '', toolCalls, assistantMsg: m, provider };
+    }
+
+    if (provider === 'claude') {
+        const systemMsg = messages.find(m => m.role === 'system')?.content || '';
+        const convo = messages.filter(m => m.role !== 'system');
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json', 'x-api-key': claudeKey,
+                'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 2000, system: systemMsg, messages: convo, tools: providerTools }),
+        });
+        const data = await resp.json();
+        if (data.error) return { error: data.error };
+        const blocks = data.content || [];
+        const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('');
+        const toolCalls = blocks.filter(b => b.type === 'tool_use').map(b => ({ id: b.id, name: b.name, args: b.input || {} }));
+        return { text, toolCalls, assistantBlocks: blocks, provider };
+    }
+
+    if (provider === 'gemini') {
+        const contents = messages.filter(m => m.role !== 'system').map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: m._geminiParts || [{ text: m.content }],
+        }));
+        const sys = messages.find(m => m.role === 'system');
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents,
+                systemInstruction: sys ? { parts: [{ text: sys.content }] } : undefined,
+                tools: providerTools,
+                generationConfig: { maxOutputTokens: 2000, temperature: 0.4 },
+            }),
+        });
+        const data = await resp.json();
+        if (data.error) return { error: data.error };
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        const text = parts.filter(p => p.text).map(p => p.text).join('');
+        const toolCalls = parts.filter(p => p.functionCall).map((p, i) => ({
+            id: `gem_${Date.now()}_${i}`, name: p.functionCall.name, args: p.functionCall.args || {},
+        }));
+        return { text, toolCalls, geminiParts: parts, provider };
+    }
+
+    // free / HuggingFace — ReAct prompt fallback (no native tool calling)
+    const reactSystem = messages.find(m => m.role === 'system');
+    if (reactSystem) {
+        reactSystem.content += `\n\nYou cannot call tools natively. To use a tool, reply with ONLY a single JSON object on its own line:\n{"tool":"query_sec","args":{"query":"Apple","sub_section":"10-K","limit":5}}\nAvailable tools: ${tools.map(t => t.name).join(', ')}. After I return the tool result, continue. When you have enough info, answer normally in plain text (no JSON).`;
+    }
+    const data = await callAI_free(messages);
+    if (!data) return { error: { message: 'Free models unavailable. Add a Groq key for reliable tool-use.' } };
+    const content = data.choices?.[0]?.message?.content || '';
+    const parsed = parseReactToolCall(content);
+    return parsed
+        ? { text: '', toolCalls: [{ id: 'react_' + Date.now(), name: parsed.tool, args: parsed.args || {} }], reactRaw: content, provider }
+        : { text: content, toolCalls: [], provider };
+}
+
+function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
+
+function parseReactToolCall(text) {
+    if (!text) return null;
+    const m = text.match(/\{[^{}]*"tool"\s*:\s*"[^"]+"[^{}]*\}/s);
+    if (!m) return null;
+    try { const o = JSON.parse(m[0]); return o.tool ? o : null; } catch { return null; }
+}
+
+// --- Append the assistant's tool-call turn + tool results, per provider format ---
+function appendAssistantAndToolResults(provider, messages, modelResp, executed) {
+    if (provider === 'openai' || provider === 'groq') {
+        messages.push(modelResp.assistantMsg);
+        for (const e of executed) {
+            messages.push({ role: 'tool', tool_call_id: e.call.id, content: truncateForContext(e.result) });
+        }
+    } else if (provider === 'claude') {
+        messages.push({ role: 'assistant', content: modelResp.assistantBlocks });
+        messages.push({
+            role: 'user',
+            content: executed.map(e => ({ type: 'tool_result', tool_use_id: e.call.id, content: truncateForContext(e.result) })),
+        });
+    } else if (provider === 'gemini') {
+        messages.push({ role: 'assistant', content: '', _geminiParts: modelResp.geminiParts });
+        messages.push({
+            role: 'user', content: '',
+            _geminiParts: executed.map(e => ({ functionResponse: { name: e.call.name, response: { result: truncateForContext(e.result) } } })),
+        });
+    } else {
+        // free / ReAct: feed the result back as a user message
+        messages.push({ role: 'assistant', content: modelResp.reactRaw || '' });
+        messages.push({ role: 'user', content: `Tool result for ${executed.map(e => e.call.name).join(', ')}:\n${executed.map(e => truncateForContext(e.result)).join('\n')}` });
+    }
+    return messages;
+}
+
+async function runAgentLoop(userMsg) {
+    const provider = aiProvider;
+    const tools = getToolRegistry();
+    let messages = buildAgentMessages(userMsg);
+
+    for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
+        const resp = await callModelWithTools(provider, messages, tools);
+        if (resp.error) return { error: resp.error };
+
+        if (!resp.toolCalls || resp.toolCalls.length === 0) {
+            return { text: resp.text || 'No response.' };
+        }
+
+        const executed = [];
+        for (const call of resp.toolCalls) {
+            renderToolActivity('call', call.name, call.args);
+            const tool = tools.find(t => t.name === call.name);
+            let result;
+            try {
+                result = tool ? await tool.run(call.args || {}) : { error: `unknown tool: ${call.name}` };
+            } catch (e) {
+                result = { error: e.message || String(e) };
+            }
+            executed.push({ call, result });
+            renderToolActivity('result', call.name, result);
+        }
+        messages = appendAssistantAndToolResults(provider, messages, resp, executed);
+    }
+    return { error: { message: `Stopped after ${MAX_TOOL_ITERATIONS} tool rounds without a final answer. Try a more specific question.` } };
+}
+
+function renderToolActivity(kind, name, payload) {
+    let line;
+    if (kind === 'call') {
+        line = `⚙ calling ${name}(${JSON.stringify(payload).slice(0, 160)})`;
+    } else {
+        const n = payload && typeof payload === 'object'
+            ? (payload.count ?? (payload.results?.length) ?? (payload.error ? 'error: ' + payload.error : Object.keys(payload).length + ' groups'))
+            : '';
+        line = `↳ ${name} → ${n === '' ? 'done' : n + (payload.error ? '' : ' results')}`;
+    }
+    appendChat('assistant', line, { noHistory: true, toolActivity: true });
+}
+
 async function sendChat() {
     const input = document.getElementById('chat-input');
     const msg = input.value.trim();
     if (!msg) return;
 
-    // Check if selected provider is ready
     updateApiState();
     if (!isProviderReady(aiProvider)) {
         showApiKeyModal();
@@ -4442,32 +4715,25 @@ async function sendChat() {
     }
 
     input.value = '';
-    appendChat('user', msg, {noHistory: true}); // show in UI, but don't add to history yet
+    appendChat('user', msg, { noHistory: true });
     const typingId = 'typing-' + Date.now();
     appendTyping(typingId);
 
     try {
-        const messages = buildMessages(msg);
-        const data = await callAI(messages);
+        const result = await runAgentLoop(msg);
         removeTyping(typingId);
 
-        if (data.error) {
-            appendChat('assistant', `Error: ${data.error.message || JSON.stringify(data.error)}`, {noHistory: true});
-            // Don't persist user msg or error in history — so retries stay clean
+        if (result.error) {
+            appendChat('assistant', `Error: ${result.error.message || JSON.stringify(result.error)}`, { noHistory: true });
         } else {
-            // Success — now persist both user msg and response in history
-            chatHistory.push({role:'user', content: msg});
+            chatHistory.push({ role: 'user', content: msg });
             const providerNames = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
-            let providerTag = `[${providerNames[aiProvider] || aiProvider}]`;
-            if (data._fallback) {
-                providerTag = `[Fallback — OpenAI rate limited]`;
-            }
-            const content = data.choices?.[0]?.message?.content || 'No response';
-            appendChat('assistant', `${providerTag} ${content}`, {historyContent: content});
+            const providerTag = `[${providerNames[aiProvider] || aiProvider}]`;
+            appendChat('assistant', `${providerTag} ${result.text}`, { historyContent: result.text });
         }
     } catch (e) {
         removeTyping(typingId);
-        appendChat('assistant', `Error: ${e.message}`, {noHistory: true});
+        appendChat('assistant', `Error: ${e.message}`, { noHistory: true });
     }
 }
 
@@ -4484,6 +4750,13 @@ function appendChat(role, content, opts = {}) {
         chatHistory.push({role, content: cleanContent});
     }
     const container = document.getElementById('chat-messages');
+    // Tool-activity lines render as compact monospace status rows, not chat bubbles.
+    if (opts.toolActivity) {
+        container.insertAdjacentHTML('beforeend',
+            `<div class="chat-tool-activity" style="font-family:var(--mono);font-size:11px;color:var(--text-muted);padding:2px 0 2px 38px;white-space:pre-wrap;">${escapeHtml(content)}</div>`);
+        requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+        return;
+    }
     const avatar = role === 'user' ? svgIcon('user', 14) : svgIcon('bot', 14);
     const html = `<div class="chat-message ${role}">
         ${role === 'assistant' ? `<div class="chat-avatar">${avatar}</div>` : ''}
