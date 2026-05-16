@@ -3,6 +3,7 @@
 // Strips client auth/cookie headers; pins Access-Control-Allow-Origin to our known hosts.
 
 const UPSTREAMS = {
+  sec:         'https://efts.sec.gov',
   bls:         'https://api.bls.gov',
   nih_pubmed:  'https://eutils.ncbi.nlm.nih.gov',
   loc:         'https://www.loc.gov',

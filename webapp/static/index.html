@@ -210,6 +210,20 @@
         .content::-webkit-scrollbar-track { background: transparent; }
         .content::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 0; }
         .content::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+        /* Help & Guide rich document */
+        .help-doc { max-width: 860px; line-height: 1.6; font-size: 13px; color: var(--text-secondary); }
+        .help-doc h2 { font-family: var(--mono); font-size: 20px; color: var(--accent); margin: 4px 0 10px; }
+        .help-doc h3 { font-family: var(--mono); font-size: 15px; color: var(--text-primary); margin: 26px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+        .help-doc p { margin: 8px 0; }
+        .help-doc ul { margin: 8px 0 8px 0; padding-left: 20px; }
+        .help-doc li { margin: 4px 0; }
+        .help-doc code { font-family: var(--mono); background: var(--bg-card); border: 1px solid var(--border); padding: 1px 5px; font-size: 12px; }
+        .help-doc a { color: var(--accent); text-decoration: none; }
+        .help-doc a:hover { text-decoration: underline; }
+        .help-doc table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12px; }
+        .help-doc th, .help-doc td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
+        .help-doc th { background: var(--bg-card); font-family: var(--mono); color: var(--text-primary); }
+        .help-doc strong { color: var(--text-primary); }
 
         /* Loading */
         .loading {
@@ -1150,6 +1164,13 @@
     </style>
 </head>
 <body>
+<button id="app-back-btn" onclick="navBack()" title="Back (or use your browser's back button)"
+    style="display:none;position:fixed;top:10px;left:12px;z-index:1000;align-items:center;gap:6px;
+           padding:6px 12px;border:1px solid var(--border);background:var(--bg-card);
+           color:var(--text-secondary);font-family:var(--mono);font-size:12px;cursor:pointer;border-radius:0;">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3L5 8l5 5"/></svg>
+    Back
+</button>
 <div class="app" id="app">
     <!-- Sidebar -->
     <div class="sidebar">
@@ -1171,6 +1192,12 @@
             <div style="height:1px;background:var(--border);margin:8px 0;"></div>
             <div id="agency-nav-list">
                 <div class="loading"><div class="spinner"></div>Loading...</div>
+            </div>
+        </div>
+        <div class="sidebar-footer" style="border-top:1px solid var(--border);padding:8px;">
+            <div class="nav-item" onclick="showHelp()" data-page="help" style="display:flex;align-items:center;gap:8px;">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6.3 6.2a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.5-.7 1V9.4" stroke-linecap="round"/><circle cx="8" cy="11.4" r="0.4" fill="currentColor"/></svg>
+                Help &amp; Guide
             </div>
         </div>
     </div>
@@ -1249,6 +1276,95 @@ Free mode is active — no API key needed, just start chatting. For alternate pr
                     <input id="chat-input" placeholder="Ask about cross-referencing government data..." onkeydown="if(event.key==='Enter')sendChat()">
                     <button onclick="sendChat()">Send</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Help & Guide Page -->
+        <div id="page-help" style="display:none;flex-direction:column;height:100%;">
+            <div class="topbar">
+                <h2><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.5" style="vertical-align:middle;margin-right:6px;"><circle cx="8" cy="8" r="6"/><path d="M6.3 6.2a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.5-.7 1V9.4" stroke-linecap="round"/><circle cx="8" cy="11.4" r="0.4" fill="currentColor"/></svg>Help &amp; Guide</h2>
+                <span class="source-badge">User documentation</span>
+            </div>
+            <div class="content help-doc">
+                <h2>OpenGovDash</h2>
+                <p>A free, no-install web app for exploring <strong>21 US government agencies</strong> and ~56 live data endpoints — SEC filings, FDA recalls, BLS employment, NASA, USGS earthquakes, federal spending, campaign finance, and more. Search the raw data yourself, or ask the built-in AI to fetch and cross-reference it for you. Nothing to download. No account. Any API keys you add never leave your browser.</p>
+
+                <h3>1. Getting started</h3>
+                <p>On first open you'll see a <strong>setup wizard</strong> with three tracks:</p>
+                <table>
+                    <tr><th>Track</th><th>What you get</th><th>Need a key?</th></tr>
+                    <tr><td><strong>Free AI</strong></td><td>AI runs on Cloudflare Workers AI (Llama 3.3 70B). Works immediately, supports tool-use, no signup.</td><td>No (optional)</td></tr>
+                    <tr><td><strong>Best Quality</strong></td><td>Highest-quality answers and most reliable tool-use, via Claude or OpenAI (pay-per-use).</td><td>Yes</td></tr>
+                    <tr><td><strong>Just Data</strong></td><td>Skip AI entirely. Browse, search, and filter all 21 agencies.</td><td>No</td></tr>
+                </table>
+                <p>Change tracks or manage keys any time via <strong>API Key</strong> in the chat top bar. In a hurry? Use <em>"Skip · just show me the data"</em>.</p>
+
+                <h3>2. The AI assistant</h3>
+                <p>The chat can <strong>call the government APIs for you</strong>. Ask a question; it picks the right agency tools, fetches live data, and answers citing its sources. Tool activity shows inline (<code>⚙ calling query_sec(...)</code> → <code>↳ query_sec → 8 results</code>). It has one tool per agency plus a <code>cross_reference</code> tool that searches several agencies at once.</p>
+                <p><strong>Try:</strong></p>
+                <ul>
+                    <li>"What are the latest SEC 8-K filings that mention cybersecurity?"</li>
+                    <li>"Cross-reference 'Samsung' across FCC, FDA, and FTC."</li>
+                    <li>"Show recent FDA drug recalls and any related SEC filings."</li>
+                    <li>"Search PubMed for GLP-1 agonist clinical trials."</li>
+                    <li>"What federal contracts mention 'quantum computing' in USAspending?"</li>
+                </ul>
+                <p><strong>Tips:</strong> be specific; the assistant runs up to 5 tool rounds then answers; Claude/OpenAI synthesize better than free models; Groq's free tier is a great fast middle ground.</p>
+                <table>
+                    <tr><th>Provider</th><th>Cost</th><th>Get a key</th></tr>
+                    <tr><td>Free (Workers AI)</td><td>Free, no signup (shared daily limit)</td><td>—</td></tr>
+                    <tr><td>Groq</td><td>Free — 30 req/min, 14.4k/day</td><td><a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a></td></tr>
+                    <tr><td>Google Gemini</td><td>Free — 15 req/min, 1.5k/day</td><td><a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></td></tr>
+                    <tr><td>Anthropic Claude</td><td>Pay-per-use, best quality</td><td><a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a></td></tr>
+                    <tr><td>OpenAI</td><td>Pay-per-use</td><td><a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></td></tr>
+                </table>
+
+                <h3>3. Your API keys are private</h3>
+                <p>Keys are stored <strong>only in your browser's localStorage</strong> and sent <strong>only to that provider</strong>. OpenGovDash has no server that sees them. The API Key panel shows a health dashboard (green = verified, amber = rate-limited, red = invalid), live validation as you paste, masked display with a Show toggle, and one-click <strong>Revoke</strong>.</p>
+                <p>⚠️ Keys live in the browser — <strong>don't enter keys on a shared or public computer.</strong></p>
+                <p>A free <a href="https://api.data.gov/signup/" target="_blank">data.gov key</a> unlocks <strong>SAM.gov</strong> (required there) and raises NASA/FEC rate limits. Optional for everything else.</p>
+
+                <h3>4. Browsing data yourself</h3>
+                <p>Pick an agency in the left sidebar. Each page has datasets (sub-sections), search where supported, a result limit (10–100) and date range where the API allows it, plus card/table views. Use the <strong>Back</strong> button (top-left) or your browser's Back — navigation stays inside the app.</p>
+
+                <h3>5. The 21 agencies</h3>
+                <table>
+                    <tr><th>Agency</th><th>What's there</th><th>Notes</th></tr>
+                    <tr><td>SEC</td><td>EDGAR: 8-K, 10-K, 10-Q, 13F, S-1, company search</td><td></td></tr>
+                    <tr><td>FDA</td><td>Drug events, drug/device/food recalls, 510(k)</td><td></td></tr>
+                    <tr><td>Treasury</td><td>Debt, daily statements, interest & exchange rates</td><td></td></tr>
+                    <tr><td>USAspending</td><td>Top agencies, federal accounts, award search</td><td>Award Search needs a keyword</td></tr>
+                    <tr><td>NOAA</td><td>Weather alerts and forecasts</td><td></td></tr>
+                    <tr><td>USGS</td><td>Recent earthquakes</td><td></td></tr>
+                    <tr><td>NASA</td><td>APOD, near-Earth objects, Mars photos</td><td>data.gov key raises limits</td></tr>
+                    <tr><td>BLS</td><td>Unemployment, CPI, employment, wages</td><td></td></tr>
+                    <tr><td>Census</td><td>Population and income by state</td><td></td></tr>
+                    <tr><td>FDIC</td><td>Bank financials, bank failures</td><td></td></tr>
+                    <tr><td>NIH</td><td>PubMed research, ClinicalTrials.gov</td><td></td></tr>
+                    <tr><td>FEC</td><td>Candidates, committee filings</td><td>data.gov key raises limits</td></tr>
+                    <tr><td>LOC</td><td>Library of Congress collections</td><td></td></tr>
+                    <tr><td>NIST</td><td>CVE vulnerability database</td><td></td></tr>
+                    <tr><td>FCC</td><td>Equipment auth, ECFS, complaints, broadband</td><td></td></tr>
+                    <tr><td>DOJ</td><td>Press releases, blog, speeches, news</td><td></td></tr>
+                    <tr><td>DOT / NHTSA</td><td>Vehicle recalls and safety complaints</td><td>Search as "Make Model Year"</td></tr>
+                    <tr><td>EPA</td><td>Toxic Release Inventory, water, facilities</td><td></td></tr>
+                    <tr><td>SAM.gov</td><td>Federal contract opportunities</td><td>Requires free data.gov key</td></tr>
+                    <tr><td>NARA</td><td>National Archives catalog</td><td>Archives' API is down on their side; app links out</td></tr>
+                    <tr><td>FTC</td><td>Press releases / enforcement</td><td>No public feed; app links to ftc.gov</td></tr>
+                </table>
+                <p>When an upstream government API is down, OpenGovDash says so plainly and links you to the source instead of showing fake or empty data.</p>
+
+                <h3>6. Troubleshooting</h3>
+                <p><strong>"Free AI hit its shared daily limit"</strong> — resets 00:00 UTC. Add a free Groq key for unlimited access.<br>
+                <strong>Agency "temporarily unreachable"</strong> — government APIs go down; retry later. NARA/FTC have known upstream outages.<br>
+                <strong>Generic answer / no tool used</strong> — free models are weaker at tool decisions; ask directly ("use the SEC tool to…") or switch to Groq/Claude/OpenAI.<br>
+                <strong>Key shows red</strong> — check for trailing spaces and that the key matches the provider (OpenAI <code>sk-</code>, Groq <code>gsk_</code>, Gemini <code>AIza</code>, Claude <code>sk-ant-</code>).<br>
+                <strong>SAM.gov "requires a data.gov API key"</strong> — expected; get one free at api.data.gov/signup.</p>
+
+                <h3>7. Privacy</h3>
+                <p>No accounts, no tracking, no analytics. API keys are browser-only and never sent to any OpenGovDash server (there isn't one — it's a static site). Agencies that block browsers are relayed through a thin Cloudflare proxy that strips your auth headers and cookies before forwarding and holds no secrets.</p>
+
+                <p style="margin-top:24px;color:var(--text-muted);font-size:11px;">OpenGovDash · MIT licensed · data sourced live from official US government APIs.</p>
             </div>
         </div>
     </div>
@@ -1706,27 +1822,33 @@ const DIRECT_API = {
             let dateFilter = '';
             if (opts.dateFrom) dateFilter += `&dateRange=custom&startdt=${opts.dateFrom}`;
             if (opts.dateTo) dateFilter += `&enddt=${opts.dateTo}`;
-            if (query) {
-                const r = await fetch(`https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(query)}%22&from=0&size=${lim}${dateFilter}`);
-                const d = await r.json();
-                return (d.hits?.hits || []).map(h => ({
-                    title: h._source?.entity_name || '',
-                    description: h._source?.file_description || '',
-                    date: h._source?.file_date || '',
-                    link: `https://www.sec.gov/cgi-bin/browse-edgar?company=${query}&CIK=&type=&dateb=&owner=include&count=40&search_text=&action=getcompany`,
-                    form_type: h._source?.form_type || ''
-                }));
-            }
+            // efts.sec.gov (EDGAR full-text search) sends no CORS headers, so the
+            // direct browser fetch always fails. Try direct first (works for self-
+            // hosters / future CORS), then fall back to the Worker on static hosts.
+            const directUrl = query
+                ? `https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(query)}%22&from=0&size=${lim}${dateFilter}`
+                : `https://efts.sec.gov/LATEST/search-index?q=%22${sub || '8-K'}%22&forms=${sub || '8-K'}&from=0&size=${lim}${dateFilter}`;
             const ft = sub || '8-K';
-            const r = await fetch(`https://efts.sec.gov/LATEST/search-index?q=%22${ft}%22&forms=${ft}&from=0&size=${lim}${dateFilter}`);
-            const d = await r.json();
-            return (d.hits?.hits || []).map(h => ({
+            const parseSec = (d) => (d.hits?.hits || []).map(h => ({
                 title: (h._source?.display_names || [''])[0] || h._source?.entity_name || '',
-                description: `${ft} filing - ${h._source?.file_description || ''}`,
+                description: query ? (h._source?.file_description || '') : `${ft} filing - ${h._source?.file_description || ''}`,
                 date: h._source?.file_date || '',
-                link: h._source?.entity_id ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${h._source.entity_id}` : '',
+                link: h._source?.entity_id
+                    ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${h._source.entity_id}`
+                    : `https://www.sec.gov/cgi-bin/browse-edgar?company=${encodeURIComponent(query || '')}&action=getcompany`,
                 form_type: h._source?.form_type || ft
             }));
+            try {
+                const r = await fetch(directUrl, { signal: AbortSignal.timeout(6000) });
+                if (r.ok) return parseSec(await r.json());
+            } catch {}
+            try {
+                if (IS_STATIC_HOST) {
+                    const r = await fetch(proxyUrl('sec', directUrl));
+                    if (r.ok) return parseSec(await r.json());
+                }
+            } catch {}
+            return [{ title: 'SEC EDGAR temporarily unreachable', description: 'EDGAR full-text search did not respond. Try again shortly.', date: '', link: 'https://www.sec.gov/edgar/search/' }];
         }
     },
     fda: {
@@ -3032,6 +3154,9 @@ const CLIENT_AGENCIES = [
 
 // Init
 async function init() {
+    // Seed a base history entry so the first in-app navigation has somewhere to
+    // return to (and the browser Back button doesn't immediately leave the site).
+    try { history.replaceState({ ogdPage: 'overview' }, '', location.pathname + location.search); } catch (e) {}
     // Try Flask backend first, fallback to client-side
     try {
         const resp = await fetch(`${API_BASE}/api/agencies`, {signal: AbortSignal.timeout(3000)});
@@ -3227,6 +3352,30 @@ async function fetchOverviewPreviews() {
 }
 
 // Page switching
+// ---- In-app navigation history ----
+// Single-page app: without this, the browser Back button leaves the site entirely.
+// We keep an explicit stack and mirror it into the History API so both the browser
+// Back button AND the in-app Back button navigate within the app.
+let currentPage = '';
+let navStack = [];
+let _navSuppressPush = false;   // true while restoring from popstate / back
+
+function renderBackButton() {
+    const btn = document.getElementById('app-back-btn');
+    if (!btn) return;
+    // Hide on the two "home"/entry surfaces; show whenever there's somewhere to return to.
+    const atHome = currentPage === 'overview' || currentPage === 'welcome' || currentPage === '';
+    btn.style.display = (!atHome && navStack.length > 0) ? 'flex' : 'none';
+}
+
+function navBack() {
+    if (navStack.length > 0) {
+        history.back();   // triggers popstate → restores previous page
+    } else {
+        setActivePage('overview');
+    }
+}
+
 function setActivePage(page) {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
@@ -3236,9 +3385,27 @@ function setActivePage(page) {
     document.getElementById('page-overview').style.display = page === 'overview' ? 'block' : 'none';
     document.getElementById('page-agency').style.display = page.startsWith('agency-') ? 'flex' : 'none';
     document.getElementById('page-chat').style.display = page === 'chat' ? 'flex' : 'none';
+    document.getElementById('page-help').style.display = page === 'help' ? 'flex' : 'none';
+
+    if (!_navSuppressPush && currentPage && currentPage !== page) {
+        navStack.push(currentPage);
+        try { history.pushState({ ogdPage: page }, '', '#' + page); } catch (e) {}
+    }
+    currentPage = page;
+    renderBackButton();
 }
 
+// Browser Back/Forward → navigate inside the app instead of leaving the site.
+window.addEventListener('popstate', (e) => {
+    const target = (e.state && e.state.ogdPage) || navStack.pop() || 'overview';
+    if (navStack.length && navStack[navStack.length - 1] === target) navStack.pop();
+    _navSuppressPush = true;
+    setActivePage(target);
+    _navSuppressPush = false;
+});
+
 function showWelcome() { startWizard(); }
+function showHelp() { setActivePage('help'); }
 
 // ========== GUIDED SETUP WIZARD (Phase 3) ==========
 
@@ -4632,11 +4799,75 @@ async function callModelWithTools(provider, messages, tools) {
 
 function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
 
+// Weaker free models (Workers AI Llama) frequently stringify array/object/number
+// args — e.g. agency_ids arrives as '["sec","fda"]' instead of an array. Coerce
+// each arg back to the type its JSON-Schema declares so tool.run() gets clean input.
+function coerceToolArgs(args, schema) {
+    if (!schema || !schema.properties || !args || typeof args !== 'object') return args || {};
+    const out = { ...args };
+    for (const [key, spec] of Object.entries(schema.properties)) {
+        if (!(key in out)) continue;
+        let v = out[key];
+        const t = spec.type;
+        if (typeof v === 'string') {
+            const s = v.trim();
+            if (t === 'array' || t === 'object') {
+                const parsed = safeJsonParse(s);
+                if (parsed !== null) v = parsed;
+            } else if (t === 'integer' || t === 'number') {
+                const n = Number(s);
+                if (!Number.isNaN(n)) v = n;
+            } else if (t === 'boolean') {
+                if (s === 'true') v = true; else if (s === 'false') v = false;
+            }
+        }
+        // Last-ditch: schema wants an array but we still have a scalar — wrap it.
+        if (t === 'array' && !Array.isArray(v) && v != null) v = [v];
+        out[key] = v;
+    }
+    return out;
+}
+
+// Free models emit tool calls as text in several shapes. Scan for balanced JSON
+// objects and normalize any of: {tool,args} / {name,arguments} / {name,parameters}
+// / {type:"function",name,...} / {function:{name,arguments}} → {tool, args}.
 function parseReactToolCall(text) {
     if (!text) return null;
-    const m = text.match(/\{[^{}]*"tool"\s*:\s*"[^"]+"[^{}]*\}/s);
-    if (!m) return null;
-    try { const o = JSON.parse(m[0]); return o.tool ? o : null; } catch { return null; }
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] !== '{') continue;
+        let depth = 0;
+        for (let j = i; j < text.length; j++) {
+            if (text[j] === '{') depth++;
+            else if (text[j] === '}') {
+                depth--;
+                if (depth === 0) {
+                    const candidate = text.slice(i, j + 1);
+                    const o = safeJsonParse(candidate);
+                    if (o) {
+                        const norm = normalizeToolCallObject(o);
+                        if (norm) return norm;
+                    }
+                    break; // move past this object; outer loop continues from i+1
+                }
+            }
+        }
+    }
+    return null;
+}
+function normalizeToolCallObject(o) {
+    if (!o || typeof o !== 'object') return null;
+    if (o.function && o.function.name) {
+        return { tool: o.function.name, args: coerceArgsValue(o.function.arguments ?? o.function.parameters) };
+    }
+    const name = o.tool || o.name || o.tool_name;
+    if (!name || typeof name !== 'string') return null;
+    const args = o.args ?? o.arguments ?? o.parameters ?? o.input ?? {};
+    return { tool: name, args: coerceArgsValue(args) };
+}
+function coerceArgsValue(a) {
+    if (a == null) return {};
+    if (typeof a === 'string') { const p = safeJsonParse(a); return p && typeof p === 'object' ? p : {}; }
+    return typeof a === 'object' ? a : {};
 }
 
 // --- Append the assistant's tool-call turn + tool results, per provider format ---
@@ -4681,11 +4912,12 @@ async function runAgentLoop(userMsg) {
 
         const executed = [];
         for (const call of resp.toolCalls) {
-            renderToolActivity('call', call.name, call.args);
             const tool = tools.find(t => t.name === call.name);
+            const args = coerceToolArgs(call.args || {}, tool?.input_schema);
+            renderToolActivity('call', call.name, args);
             let result;
             try {
-                result = tool ? await tool.run(call.args || {}) : { error: `unknown tool: ${call.name}` };
+                result = tool ? await tool.run(args) : { error: `unknown tool: ${call.name}` };
             } catch (e) {
                 result = { error: e.message || String(e) };
             }
