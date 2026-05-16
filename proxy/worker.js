@@ -52,8 +52,44 @@ function json(body, status, origin) {
   });
 }
 
+// Free-mode LLM via Cloudflare Workers AI. No user key; this is the reliable
+// replacement for HuggingFace serverless. Llama 3.3 70B supports tool calling.
+const FREE_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
+async function handleFreeAI(request, env, allowOrigin) {
+  if (!env || !env.AI) {
+    return json({ error: { type: 'no_binding',
+      message: 'Free AI is not configured on this deployment. Add a Groq key (free) for AI chat.' } }, 200, allowOrigin);
+  }
+  let body;
+  try { body = await request.json(); } catch { return json({ error: { message: 'bad request body' } }, 400, allowOrigin); }
+  const input = { messages: body.messages || [], max_tokens: Math.min(body.max_tokens || 2000, 4000) };
+  if (Array.isArray(body.tools) && body.tools.length) input.tools = body.tools;
+  try {
+    const out = await env.AI.run(FREE_AI_MODEL, input);
+    // Normalize to an OpenAI-ish shape the frontend already understands.
+    const toolCalls = (out.tool_calls || []).map((tc, i) => ({
+      id: tc.id || `cf_${Date.now()}_${i}`,
+      type: 'function',
+      function: { name: tc.name || tc.function?.name, arguments: JSON.stringify(tc.arguments ?? tc.function?.arguments ?? {}) },
+    }));
+    return json({
+      choices: [{ message: { role: 'assistant', content: out.response || '', tool_calls: toolCalls.length ? toolCalls : undefined } }],
+    }, 200, allowOrigin);
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    const rateLimited = /rate|limit|quota|capacity|exceeded|neuron/i.test(msg);
+    return json({ error: {
+      type: rateLimited ? 'rate_limited' : 'upstream_error',
+      message: rateLimited
+        ? 'Free AI has hit its shared daily limit. It resets at 00:00 UTC. For unlimited fast access, add a free Groq key (30-second signup).'
+        : `Free AI error: ${msg}. You can add a free Groq key for reliable access.`,
+    } }, 200, allowOrigin);
+  }
+}
+
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
     const origin = request.headers.get('Origin') || '';
     const allowOrigin = pickAllowOrigin(origin);
@@ -63,7 +99,11 @@ export default {
     }
 
     if (url.pathname === '/' || url.pathname === '/health') {
-      return json({ ok: true, upstreams: Object.keys(UPSTREAMS) }, 200, allowOrigin);
+      return json({ ok: true, upstreams: Object.keys(UPSTREAMS), freeAI: !!(env && env.AI) }, 200, allowOrigin);
+    }
+
+    if (url.pathname === '/ai/chat' && request.method === 'POST') {
+      return handleFreeAI(request, env, allowOrigin);
     }
 
     const match = url.pathname.match(/^\/p\/([a-z_]+)(\/.*)?$/);

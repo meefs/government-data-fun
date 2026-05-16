@@ -1273,7 +1273,7 @@ Free mode is active — no API key needed, just start chatting. For alternate pr
 
         <label>AI Provider</label>
         <select id="modal-provider-select" onchange="modalProviderChange()" style="width:100%;padding:8px 12px;border-radius:0;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:13px;outline:none;">
-            <option value="free">Free Mode (HuggingFace)</option>
+            <option value="free">Free Mode (Cloudflare Workers AI)</option>
             <option value="openai">OpenAI (GPT-4o-mini)</option>
             <option value="groq">Groq (Llama 3 70B)</option>
             <option value="gemini">Google Gemini (Flash)</option>
@@ -1376,9 +1376,13 @@ const API_BASE = '';  // Same origin for Flask backend (self-hosters)
 const PROXY_BASE = window.__OGD_PROXY__ || 'https://opengov-proxy.psjs.workers.dev/p';
 // True when served from a static host (GitHub Pages / selvidge.tech). No Flask backend available.
 const IS_STATIC_HOST = location.protocol === 'https:' && !/^(localhost|127\.0\.0\.1)/.test(location.hostname);
+// Free-mode LLM endpoint on the same Worker (Cloudflare Workers AI). PROXY_BASE
+// ends in /p; the AI route is a sibling at /ai/chat.
+const FREE_AI_URL = PROXY_BASE.replace(/\/p$/, '') + '/ai/chat';
 // Expose a few constants on window so DevTools / smoke-test scripts can introspect them.
 window.PROXY_BASE = PROXY_BASE;
 window.IS_STATIC_HOST = IS_STATIC_HOST;
+window.FREE_AI_URL = FREE_AI_URL;
 let agencies = [];
 let currentAgency = null;
 let currentSubSection = '';
@@ -1432,7 +1436,7 @@ function updateApiState() {
     // Update chat provider badge if visible
     const badge = document.getElementById('chat-provider-badge');
     if (badge) {
-        const names = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
+        const names = { free: 'Free (Workers AI)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
         badge.textContent = `Powered by ${names[aiProvider] || 'AI'}`;
     }
 }
@@ -2794,22 +2798,31 @@ async function fccEcfsFilings(query, opts = {}) {
     if (query) directUrl += `&q=${encodeURIComponent(query)}`;
     const parseEcfs = (d) => {
         const filings = d.filing || d.filings || d.results || (Array.isArray(d) ? d : []);
-        return (filings || []).slice(0, lim).map(f => {
+        const seen = new Set();
+        const out = [];
+        for (const f of (filings || [])) {
             const firm = (f.lawfirms || [])[0]?.name;
             const proc = (f.proceedings || [])[0];
             const filer = firm || f.name_of_filer || f.filer || f.submitter || 'Anonymous Filer';
             const subType = f.submissiontype?.description || f.type_of_filing || f.filing_type || '';
             const procName = proc?.name ? `Proceeding ${proc.name}` : '';
             const procDesc = proc?.description_display || proc?.description || '';
-            return {
+            // De-dupe: ECFS frequently returns many near-identical bulk filings.
+            // Key on submission id when present, else filer+proceeding+date.
+            const key = f.id_submission || `${filer}|${proc?.name || ''}|${f.date_received || ''}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({
                 title: filer,
                 description: [procName, subType, procDesc.substring(0, 200)].filter(Boolean).join(' | '),
                 date: f.date_received || f.date_last_modified || f.date_submission || '',
                 link: f.id_submission ? `https://www.fcc.gov/ecfs/document/${f.id_submission}/1` : 'https://www.fcc.gov/ecfs/',
                 proceeding_number: proc?.name || f.proceeding_number || '',
                 bureau: (f.bureaus || [])[0]?.name || f.bureau || ''
-            };
-        });
+            });
+            if (out.length >= lim) break;
+        }
+        return out;
     };
     try {
         const r = await fetch(directUrl, {signal: AbortSignal.timeout(6000)});
@@ -3232,7 +3245,7 @@ function showWelcome() { startWizard(); }
 const SETUP_TRACKS = {
     free: {
         label: 'Free AI',
-        summary: 'No credit card. Uses free tiers. Groq is fastest; Gemini is a solid backup; HuggingFace is the zero-config fallback.',
+        summary: 'No credit card. Zero-config mode runs on Cloudflare Workers AI (Llama 3.3 70B, supports tool-use) — works without any key. Add a Groq or Gemini key for faster, higher-limit access.',
         providers: ['groq', 'gemini'],   // primary + secondary to offer
         primary: 'groq',
         fallback: 'free',                 // always-available fallback provider id
@@ -3287,7 +3300,7 @@ const PROVIDER_DOCS = {
         toolUse: true,
     },
     free: {
-        label: 'HuggingFace Serverless',
+        label: 'Cloudflare Workers AI (Llama 3.3 70B)',
         price: 'FREE · no signup',
         signup: null,
         format: null,
@@ -3422,7 +3435,7 @@ async function wizardSaveAiKeys() {
     })).filter(e => e.key);
 
     if (entries.length === 0) {
-        // Nothing entered — advance using the track's fallback (e.g. HuggingFace free).
+        // Nothing entered — advance using the track's fallback (Cloudflare Workers AI free).
         if (track.fallback) { aiProvider = track.fallback; try { localStorage.setItem('ai_provider', aiProvider); } catch(e){} }
         updateApiState();
         gotoWizardStep('data-keys');
@@ -3562,7 +3575,7 @@ function wizardSkip() {
 function showOverview() { setActivePage('overview'); }
 function showChat() {
     setActivePage('chat');
-    const names = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
+    const names = { free: 'Free (Workers AI)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
     document.getElementById('chat-provider-badge').textContent = `Powered by ${names[aiProvider] || 'AI'}`;
 }
 
@@ -4240,27 +4253,25 @@ function getActiveKey() {
 //  currentData, so the old "current data context" shim is no longer needed.)
 
 // Standalone fallback callers for auto-retry on 429
-async function callAI_free(messages) {
-    const freeModels = [
-        'Qwen/Qwen2.5-72B-Instruct',
-        'mistralai/Mixtral-8x7B-Instruct-v0.1',
-        'meta-llama/Meta-Llama-3-8B-Instruct'
-    ];
-    for (const model of freeModels) {
-        try {
-            const url = `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`;
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model, messages, max_tokens: 1500, temperature: 0.7 })
-            });
-            if (resp.ok) {
-                const data = await resp.json();
-                if (data.choices?.[0]) return data;
-            }
-        } catch (e) { /* try next */ }
+// Free mode runs through our Cloudflare Worker (Workers AI, Llama 3.3 70B).
+// Reliable, no user key, supports tool calling. Returns an OpenAI-ish shape:
+//   { choices:[{message:{content, tool_calls?}}] }  OR  { error:{type,message} }
+// Never throws — callers can rely on the returned object.
+async function callAI_free(messages, tools) {
+    try {
+        const body = { messages, max_tokens: 2000 };
+        if (Array.isArray(tools) && tools.length) body.tools = tools;
+        const resp = await fetch(FREE_AI_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await resp.json().catch(() => null);
+        if (data && (data.choices || data.error)) return data;
+        return { error: { type: 'bad_response', message: 'Free AI returned an unexpected response. Add a free Groq key for reliable access.' } };
+    } catch (e) {
+        return { error: { type: 'network', message: `Free AI unreachable (${e.message}). Add a free Groq key for reliable access.` } };
     }
-    return null;
 }
 
 async function callAI_groq(messages) {
@@ -4280,28 +4291,8 @@ async function callAI(messages) {
     const provider = aiProvider;
 
     if (provider === 'free') {
-        // HuggingFace free serverless inference — no API key, OpenAI-compatible
-        const freeModels = [
-            'Qwen/Qwen2.5-72B-Instruct',
-            'mistralai/Mixtral-8x7B-Instruct-v0.1',
-            'meta-llama/Meta-Llama-3-8B-Instruct'
-        ];
-        for (const model of freeModels) {
-            try {
-                const url = `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`;
-                const resp = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model, messages, max_tokens: 1500, temperature: 0.7 })
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data.choices?.[0]) return data;
-                }
-                // If 503 (model loading) or 429 (rate limit), try next model
-            } catch (e) { /* try next model */ }
-        }
-        return { error: { message: 'Free models are busy. Try again in a moment, or switch to Groq (free key at groq.com) for reliable access.' } };
+        // Reliable free inference via our Cloudflare Worker (Workers AI).
+        return await callAI_free(messages);
     }
 
     if (provider === 'groq') {
@@ -4338,7 +4329,7 @@ async function callAI(messages) {
                     console.warn('[OpenGovDash] OpenAI 429 — falling back to free provider');
                     // Auto-fallback to free provider
                     const fallbackResult = await callAI_free(messages);
-                    if (fallbackResult) {
+                    if (fallbackResult && fallbackResult.choices) {
                         fallbackResult._fallback = true;
                         fallbackResult._fallbackReason = errMsg;
                         return fallbackResult;
@@ -4609,14 +4600,30 @@ async function callModelWithTools(provider, messages, tools) {
         return { text, toolCalls, geminiParts: parts, provider };
     }
 
-    // free / HuggingFace — ReAct prompt fallback (no native tool calling)
+    // free → Cloudflare Workers AI (Llama 3.3 70B). It supports OpenAI-style tool
+    // calling natively; we also keep a ReAct text-JSON parse as a safety net.
+    const openaiTools = toolsForProvider('openai', tools);
+    // Lightweight ReAct hint in case the model emits JSON text instead of structured calls.
     const reactSystem = messages.find(m => m.role === 'system');
-    if (reactSystem) {
-        reactSystem.content += `\n\nYou cannot call tools natively. To use a tool, reply with ONLY a single JSON object on its own line:\n{"tool":"query_sec","args":{"query":"Apple","sub_section":"10-K","limit":5}}\nAvailable tools: ${tools.map(t => t.name).join(', ')}. After I return the tool result, continue. When you have enough info, answer normally in plain text (no JSON).`;
+    if (reactSystem && !reactSystem._reactHinted) {
+        reactSystem.content += `\n\nIf you cannot emit a structured tool call, you may instead reply with ONLY this JSON on its own line: {"tool":"query_sec","args":{"query":"Apple"}}. Tools: ${tools.map(t => t.name).join(', ')}.`;
+        reactSystem._reactHinted = true;
     }
-    const data = await callAI_free(messages);
-    if (!data) return { error: { message: 'Free models unavailable. Add a Groq key for reliable tool-use.' } };
-    const content = data.choices?.[0]?.message?.content || '';
+    const data = await callAI_free(messages, openaiTools);
+    if (data.error) {
+        // Honest degradation — surface the Worker's friendly message verbatim
+        // (rate-limited / reset-at-UTC / "add a Groq key"), never a dead "Error:".
+        return { error: data.error };
+    }
+    const m = data.choices?.[0]?.message || {};
+    const nativeCalls = (m.tool_calls || []).map(tc => ({
+        id: tc.id, name: tc.function?.name, args: safeJsonParse(tc.function?.arguments) || {},
+    }));
+    if (nativeCalls.length) {
+        return { text: m.content || '', toolCalls: nativeCalls, assistantMsg: m, provider: 'openai' };
+    }
+    // No structured calls — try the ReAct text-JSON fallback.
+    const content = m.content || '';
     const parsed = parseReactToolCall(content);
     return parsed
         ? { text: '', toolCalls: [{ id: 'react_' + Date.now(), name: parsed.tool, args: parsed.args || {} }], reactRaw: content, provider }
@@ -4685,7 +4692,10 @@ async function runAgentLoop(userMsg) {
             executed.push({ call, result });
             renderToolActivity('result', call.name, result);
         }
-        messages = appendAssistantAndToolResults(provider, messages, resp, executed);
+        // Thread messages using the SHAPE the model actually returned. Free mode can
+        // return OpenAI-shaped tool_calls (Workers AI) or ReAct text; resp.provider
+        // reflects the real shape ('openai' vs 'free').
+        messages = appendAssistantAndToolResults(resp.provider || provider, messages, resp, executed);
     }
     return { error: { message: `Stopped after ${MAX_TOOL_ITERATIONS} tool rounds without a final answer. Try a more specific question.` } };
 }
@@ -4727,7 +4737,7 @@ async function sendChat() {
             appendChat('assistant', `Error: ${result.error.message || JSON.stringify(result.error)}`, { noHistory: true });
         } else {
             chatHistory.push({ role: 'user', content: msg });
-            const providerNames = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
+            const providerNames = { free: 'Free (Workers AI)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
             const providerTag = `[${providerNames[aiProvider] || aiProvider}]`;
             appendChat('assistant', `${providerTag} ${result.text}`, { historyContent: result.text });
         }
@@ -4926,7 +4936,7 @@ async function saveApiKeys() {
     renderKeyHealthPanels();
     closeApiKeyModal();
 
-    const providerNames = { free: 'Free (HuggingFace)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
+    const providerNames = { free: 'Free (Workers AI)', openai: 'OpenAI GPT-4o', groq: 'Groq Llama 3', gemini: 'Google Gemini', claude: 'Claude Sonnet' };
     const name = providerNames[aiProvider] || aiProvider;
     if (key || aiProvider === 'free') {
         appendChat('assistant', `✓ Switched to ${name}. ${aiProvider !== 'free' ? 'API key saved.' : ''} Ready to chat!`, {noHistory: true});
