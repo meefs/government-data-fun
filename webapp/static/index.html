@@ -2007,13 +2007,23 @@ const DIRECT_API = {
             const fmt = d => d.toISOString().split('T')[0];
             const apodStart = opts.dateFrom || fmt(startDate);
             const apodEnd = opts.dateTo || fmt(today);
-            const r = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${key}&start_date=${apodStart}&end_date=${apodEnd}`);
+            const r = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${key}&start_date=${apodStart}&end_date=${apodEnd}&thumbs=true`);
             const d = await r.json();
-            return (Array.isArray(d) ? d : [d]).reverse().map(x => ({
-                title: x.title || '', description: (x.explanation || '').substring(0,300),
-                date: x.date || '', link: x.hdurl || x.url || '',
-                media_type: x.media_type || 'image'
-            }));
+            const arr = Array.isArray(d) ? d : [d];
+            return arr
+                .filter(x => x && (x.title || x.url || x.hdurl))   // drop API error rows
+                .reverse()
+                .map(x => ({
+                    title: x.title || '',
+                    description: (x.explanation || '').substring(0,300),
+                    date: x.date || '',
+                    // Pick the right src per media_type: images want hdurl,
+                    // videos want the embed/file url.
+                    link: x.media_type === 'video' ? (x.url || x.hdurl || '') : (x.hdurl || x.url || ''),
+                    media_type: x.media_type || 'image',
+                    // Thumbnail for video days (when ?thumbs=true is supported).
+                    thumbnail_url: x.thumbnail_url || ''
+                }));
         }
     },
     bls: {
@@ -2085,22 +2095,38 @@ const DIRECT_API = {
     fdic: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
+            // Per-bank detail page in FDIC's modern BankFind Suite (institution profile).
+            const bankFindUrl = (cert) => cert ? `https://banks.data.fdic.gov/bankfind-suite/bankfind/details/${cert}` : 'https://banks.data.fdic.gov/bankfind-suite/bankfind/';
             if (sub === 'failures') {
                 const r = await fetch(`https://banks.data.fdic.gov/api/failures?limit=${lim}&sort_by=FAILDATE&sort_order=DESC`);
                 const d = await r.json();
-                return (d.data || []).map(x => ({
-                    title: x.data?.NAME || x.data?.INSTNAME || 'Unknown Bank',
-                    description: `${x.data?.CITY || ''}, ${x.data?.STATE || ''} | Deposits: $${(x.data?.TOTALDEPOSITS||0).toLocaleString()} | Acquiring: ${x.data?.ACQUIRINGINSTITUTION || 'N/A'}`,
-                    date: x.data?.FAILDATE || '', link: 'https://www.fdic.gov/resources/resolutions/bank-failures/'
-                }));
+                return (d.data || []).map(x => {
+                    const f = x.data || {};
+                    // Real FDIC field names: PSTALP (state postal), QBFDEP (deposits),
+                    // BIDNAME (acquiring bank), CERT (FDIC certificate #), URL (sometimes populated).
+                    const deposits = f.QBFDEP ? `$${Number(f.QBFDEP).toLocaleString()}K` : 'n/a';
+                    const cost = f.COST != null ? ` | Cost: $${Number(f.COST).toLocaleString()}K` : '';
+                    const acquirer = f.BIDNAME ? ` | Acquired by ${f.BIDNAME}` : '';
+                    return {
+                        title: f.NAME || 'Unknown Bank',
+                        description: `${f.CITYST || `${f.CITY || ''}, ${f.PSTALP || ''}`} | Deposits: ${deposits}${cost}${acquirer}`,
+                        date: f.FAILDATE || '',
+                        // Prefer FDIC's own URL field when populated; otherwise the BankFind detail page by CERT.
+                        link: (f.URL && /^https?:/.test(f.URL)) ? f.URL : bankFindUrl(f.CERT)
+                    };
+                });
             }
             const r = await fetch(`https://banks.data.fdic.gov/api/institutions?limit=${lim}&sort_by=ASSET&sort_order=DESC&filters=ACTIVE%3A1`);
             const d = await r.json();
-            return (d.data || []).map(x => ({
-                title: x.data?.INSTNAME || x.data?.REPNM || 'Unknown Institution',
-                description: `${x.data?.CITY || ''}, ${x.data?.STNAME || ''} | Assets: $${(x.data?.ASSET||0).toLocaleString()}K | Class: ${x.data?.INSTCAT || x.data?.SPECGRP || 'N/A'}`,
-                date: x.data?.REPDTE || x.data?.DATEUPDT || '', link: `https://www.fdic.gov/bank/individual/details/overview.html?newsFeedURL=/${x.data?.CERT || ''}`
-            }));
+            return (d.data || []).map(x => {
+                const f = x.data || {};
+                return {
+                    title: f.INSTNAME || f.REPNM || 'Unknown Institution',
+                    description: `${f.CITY || ''}, ${f.STNAME || ''} | Assets: $${(f.ASSET||0).toLocaleString()}K | Class: ${f.INSTCAT || f.SPECGRP || 'N/A'}`,
+                    date: f.REPDTE || f.DATEUPDT || '',
+                    link: bankFindUrl(f.CERT)
+                };
+            });
         }
     },
     nih: {
@@ -3671,19 +3697,25 @@ function renderWizVerify(body, footer) {
         <button class="wiz-btn" onclick="gotoWizardStep('data-keys')">← Back</button>
         <span class="wiz-fill"></span>
         <button class="wiz-btn" onclick="gotoWizardStep('done')">Skip →</button>
-        <button class="wiz-btn wiz-btn-primary" onclick="runWizardDemo()">Run demo</button>
+        <button class="wiz-btn wiz-btn-primary" onclick="runWizardDemo()" data-wiz-runbtn>Run demo</button>
     `;
 }
 
 async function runWizardDemo() {
     const log = document.getElementById('wiz-demo-log');
+    const footer = document.getElementById('wiz-footer');
     if (!log) return;
     const track = SETUP_TRACKS[wizardState.track];
     if (track && track.label === 'Just Data') {
         log.textContent = 'AI is disabled for the Just Data track — skipping demo.';
+        showWizardContinue(footer, /*after a result*/ false);
         return;
     }
     log.textContent = `> Sending "Reply with exactly five words." to ${aiProvider}…\n`;
+    // Disable the Run-demo button while in-flight.
+    const runBtn = footer && footer.querySelector('[data-wiz-runbtn]');
+    if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Running…'; }
+    let ok = false;
     const messages = [
         { role: 'system', content: 'You are a terse assistant. Always reply in exactly five words.' },
         { role: 'user', content: 'Say hello.' },
@@ -3692,10 +3724,37 @@ async function runWizardDemo() {
         const t0 = Date.now();
         const data = await callAI(messages);
         const dt = Date.now() - t0;
-        const reply = extractReplyText(data) || JSON.stringify(data).slice(0, 400);
-        log.textContent = `> Provider: ${aiProvider}\n> Latency: ${dt}ms\n\n${reply}`;
+        if (data && data.error) {
+            log.textContent = `> Provider: ${aiProvider}\n> ${data.error.message || JSON.stringify(data.error)}\n\nYou can continue — the chat will surface the same message if it persists.`;
+        } else {
+            const reply = extractReplyText(data) || JSON.stringify(data).slice(0, 400);
+            log.textContent = `> Provider: ${aiProvider}\n> Latency: ${dt}ms\n\n${reply}`;
+            ok = true;
+        }
     } catch (e) {
         log.textContent = `> Provider: ${aiProvider}\n> ERROR: ${e.message || e}\n\nYou can continue anyway — the chat will show the same error.`;
+    }
+    showWizardContinue(footer, ok);
+}
+
+// After the demo runs (success or error), swap the primary button to "Continue".
+// On success the verify step auto-advances after a short pause so the user can
+// see the reply but doesn't have to hunt for "Skip" to leave the step.
+let _verifyAutoAdvanceTimer = null;
+function showWizardContinue(footer, success) {
+    if (!footer) return;
+    if (_verifyAutoAdvanceTimer) { clearTimeout(_verifyAutoAdvanceTimer); _verifyAutoAdvanceTimer = null; }
+    footer.innerHTML = `
+        <button class="wiz-btn" onclick="gotoWizardStep('data-keys')">← Back</button>
+        <span class="wiz-fill"></span>
+        <button class="wiz-btn" onclick="runWizardDemo()" data-wiz-runbtn>${success ? 'Run again' : 'Try again'}</button>
+        <button class="wiz-btn wiz-btn-primary" onclick="gotoWizardStep('done')">Continue →</button>
+    `;
+    if (success) {
+        _verifyAutoAdvanceTimer = setTimeout(() => {
+            // Only auto-advance if we're still on the verify step.
+            if (wizardState.step === 'verify') gotoWizardStep('done');
+        }, 2200);
     }
 }
 
@@ -4177,10 +4236,29 @@ let apodIndex = 0;
 function renderApodView(container) {
     const item = currentData[apodIndex] || currentData[0];
     if (!item) return;
-    const isVideo = item.media_type === 'video' || (item.link && (item.link.includes('youtube') || item.link.includes('vimeo')));
-    const imgSrc = item.link || '';
+    const src = item.link || '';
+    const isVideo = item.media_type === 'video';
+    // Classify the video URL so we pick the right embed tag.
+    const isDirectVideo = isVideo && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(src);
+    const isIframeEmbed = isVideo && /(youtube\.com|youtu\.be|vimeo\.com|player\.vimeo|dailymotion\.com)/i.test(src);
     const prevDisabled = apodIndex >= currentData.length - 1 ? 'opacity:0.3;pointer-events:none;' : '';
     const nextDisabled = apodIndex <= 0 ? 'opacity:0.3;pointer-events:none;' : '';
+
+    let mediaHtml;
+    if (!isVideo) {
+        mediaHtml = `<img src="${escapeHtml(src)}" alt="${escapeHtml(item.title || '')}" style="max-width:90%;max-height:calc(100vh - 280px);border-radius:0;box-shadow:0 4px 30px rgba(0,0,0,0.5);object-fit:contain;">`;
+    } else if (isDirectVideo) {
+        mediaHtml = `<video src="${escapeHtml(src)}" controls playsinline ${item.thumbnail_url ? `poster="${escapeHtml(item.thumbnail_url)}"` : ''} style="max-width:90%;max-height:calc(100vh - 280px);border-radius:0;box-shadow:0 4px 30px rgba(0,0,0,0.5);background:#000;"></video>`;
+    } else if (isIframeEmbed) {
+        mediaHtml = `<iframe src="${escapeHtml(src)}" style="width:90%;max-width:900px;height:500px;border:none;border-radius:0;" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+    } else {
+        // Unknown video container — link out, with thumbnail if we have one.
+        mediaHtml = `<div style="text-align:center;padding:20px;">
+            ${item.thumbnail_url ? `<img src="${escapeHtml(item.thumbnail_url)}" alt="" style="max-width:90%;max-height:calc(100vh - 380px);border-radius:0;box-shadow:0 4px 30px rgba(0,0,0,0.5);object-fit:contain;margin-bottom:16px;">` : ''}
+            <a href="${escapeHtml(src)}" target="_blank" rel="noopener" style="display:inline-block;padding:10px 18px;border:1px solid var(--accent);color:var(--accent);text-decoration:none;font-family:var(--mono);font-size:13px;">Open video on apod.nasa.gov &#8599;</a>
+            <div style="margin-top:12px;color:var(--text-muted);font-size:11px;">Today's APOD is a video that can't be embedded inline.</div>
+        </div>`;
+    }
 
     container.innerHTML = `
         <div style="display:flex;flex-direction:column;align-items:center;height:100%;">
@@ -4190,15 +4268,12 @@ function renderApodView(container) {
                 <button onclick="apodNav('next')" class="sub-tab" style="font-size:13px;padding:8px 20px;${nextDisabled}">Next &#8594;</button>
             </div>
             <div style="flex:1;display:flex;align-items:center;justify-content:center;width:100%;overflow:hidden;">
-                ${isVideo
-                    ? `<iframe src="${imgSrc}" style="width:90%;max-width:900px;height:500px;border:none;border-radius:0;" allowfullscreen></iframe>`
-                    : `<img src="${imgSrc}" alt="${item.title || ''}" style="max-width:90%;max-height:calc(100vh - 280px);border-radius:0;box-shadow:0 4px 30px rgba(0,0,0,0.5);object-fit:contain;">`
-                }
+                ${mediaHtml}
             </div>
             <div style="max-width:800px;text-align:center;margin-top:12px;">
-                <h3 style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:4px;">${item.title || 'Astronomy Picture of the Day'}</h3>
+                <h3 style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:4px;">${escapeHtml(item.title || 'Astronomy Picture of the Day')}</h3>
                 <div style="font-size:12px;color:var(--accent);margin-bottom:8px;">${formatDate(item.date)}</div>
-                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;max-height:120px;overflow-y:auto;">${item.description || ''}</p>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;max-height:120px;overflow-y:auto;">${escapeHtml(item.description || '')}</p>
             </div>
         </div>`;
 }
