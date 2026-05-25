@@ -290,6 +290,46 @@
             white-space: nowrap;
         }
         .data-table tr:hover td { background: var(--bg-hover); color: var(--text-primary); }
+        .data-table tbody tr { cursor: pointer; }
+        /* Universal item-detail view */
+        .data-card { cursor: pointer; }
+        .data-card .meta a { /* allow link clicks without bubbling to card click */ }
+        .detail-btn {
+            padding: 7px 14px; border: 1px solid var(--border-bright); background: var(--bg-card);
+            color: var(--text-secondary); font-family: var(--mono); font-size: 12px;
+            cursor: pointer; border-radius: 0; text-decoration: none;
+        }
+        .detail-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .detail-btn-link { color: var(--accent); border-color: var(--accent); }
+        .detail-btn-primary { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
+        .detail-btn-primary:hover { filter: brightness(1.1); color: var(--bg-primary); }
+        .detail-btn[disabled] { opacity: 0.55; cursor: wait; }
+        .detail-badge {
+            margin-left: auto; padding: 4px 8px; border: 1px solid var(--border);
+            color: var(--text-muted); font-family: var(--mono); font-size: 11px;
+        }
+        .detail-title { font-family: var(--mono); font-size: 18px; color: var(--accent); margin-bottom: 4px; }
+        .detail-date  { color: var(--text-muted); font-size: 12px; margin-bottom: 14px; font-family: var(--mono); }
+        .detail-fields {
+            background: var(--bg-card); border: 1px solid var(--border); padding: 14px 16px;
+            margin-bottom: 18px;
+        }
+        .detail-row { display: grid; grid-template-columns: 200px 1fr; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+        .detail-row:last-child { border-bottom: 0; }
+        .detail-key { font-family: var(--mono); font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .detail-val { font-size: 13px; color: var(--text-primary); word-break: break-word; }
+        .detail-xref-heading { font-family: var(--mono); font-size: 13px; color: var(--accent); margin: 18px 0 10px; }
+        .detail-xref-loading { color: var(--text-muted); padding: 12px; }
+        .detail-xref-empty { color: var(--text-muted); padding: 12px; font-size: 12px; }
+        .detail-xref-group { margin-bottom: 18px; }
+        .detail-xref-group h4 { font-family: var(--mono); font-size: 12px; color: var(--accent-dim); margin: 0 0 8px; }
+        .detail-xref-count { color: var(--text-muted); font-weight: normal; margin-left: 6px; }
+        .detail-xref-card { background: var(--bg-card); border: 1px solid var(--border); padding: 10px 12px; margin-bottom: 6px; }
+        .detail-xref-title { font-size: 13px; color: var(--text-primary); margin-bottom: 4px; }
+        .detail-xref-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; line-height: 1.5; }
+        .detail-xref-link { color: var(--accent); font-size: 11px; font-family: var(--mono); text-decoration: none; margin-right: 8px; }
+        .detail-xref-link:hover { text-decoration: underline; }
+        .detail-xref-date { color: var(--text-muted); font-size: 11px; font-family: var(--mono); }
         .data-table a {
             color: var(--accent);
             text-decoration: none;
@@ -1903,6 +1943,10 @@ async function fetchSecSubmissions(cik, lim) {
     if (!data) return [{ title: 'SEC submissions API unreachable', description: 'Try again shortly.', date: '', link: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}` }];
     const name = data.name || `CIK ${cik}`;
     const tickers = (data.tickers || []).join(', ');
+    const exchanges = (data.exchanges || []).join(', ');
+    const sic = data.sicDescription || '';
+    const stateOfIncorp = data.stateOfIncorporationDescription || '';
+    const fiscalYearEnd = data.fiscalYearEnd || '';
     const recent = data.filings?.recent || {};
     const n = recent.accessionNumber?.length || 0;
     const rows = [];
@@ -1919,7 +1963,28 @@ async function fetchSecSubmissions(cik, lim) {
         rows.push({
             title: `${name}${tickers ? ' (' + tickers + ')' : ''} — ${form}`,
             description: desc || `Accession ${acc}`,
-            date, link, form
+            date, link, form,
+            // Rich fields for the detail view:
+            company: name,
+            tickers: tickers || '',
+            exchanges: exchanges || '',
+            sic_description: sic,
+            state_of_incorporation: stateOfIncorp,
+            fiscal_year_end: fiscalYearEnd,
+            cik,
+            accession_number: acc,
+            primary_document: doc,
+            report_date: recent.reportDate?.[i] || '',
+            acceptance_datetime: recent.acceptanceDateTime?.[i] || '',
+            file_size_bytes: recent.size?.[i] || '',
+            items: recent.items?.[i] || '',
+            is_xbrl: recent.isXBRL?.[i] ? 'Yes' : 'No',
+            is_inline_xbrl: recent.isInlineXBRL?.[i] ? 'Yes' : 'No',
+            act: recent.act?.[i] || '',
+            file_number: recent.fileNumber?.[i] || '',
+            film_number: recent.filmNumber?.[i] || '',
+            primary_doc_description: desc,
+            filing_index_url: acc ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=${encodeURIComponent(form)}&dateb=&owner=include&count=40` : ''
         });
     }
     return rows.length ? rows : [{ title: name, description: `No recent filings for CIK ${cik}.`, date: '', link: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}` }];
@@ -2015,14 +2080,36 @@ const DIRECT_API = {
             const parseSec = (d) => (d.hits?.hits || []).slice(0, lim).map(h => {
                 const s = h._source || {};
                 const cik = (s.ciks || [''])[0];
-                const accNoStripped = (h._id || '').split(':')[0].replace(/-/g, '');
-                const docLink = (cik && accNoStripped) ? `https://www.sec.gov/Archives/edgar/data/${parseInt(cik, 10)}/${accNoStripped}/` : `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}`;
+                // efts _id format: "<accession-with-dashes>:<primary-filename>"
+                const idParts = (h._id || '').split(':');
+                const accDashed = s.adsh || idParts[0] || '';
+                const primaryDoc = idParts[1] || '';
+                const accStripped = accDashed.replace(/-/g, '');
+                const cikInt = cik ? parseInt(cik, 10) : 0;
+                // Link to the filing's official index page — works for every accepted submission.
+                const docLink = (cikInt && accDashed && accStripped)
+                    ? `https://www.sec.gov/Archives/edgar/data/${cikInt}/${accStripped}/${accDashed}-index.htm`
+                    : `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik || ''}`;
                 return {
                     title: (s.display_names || [''])[0] || s.entity_name || '',
                     description: `${s.form || ft || ''}${s.file_description ? ' · ' + s.file_description : ''}`.trim(),
                     date: s.file_date || '',
                     link: docLink,
-                    form: s.form || ft
+                    form: s.form || ft,
+                    // Rich fields for the detail view + cross-ref.
+                    company: (s.display_names || [''])[0] || '',
+                    cik,
+                    accession_number: accDashed,
+                    primary_document: primaryDoc,
+                    file_description: s.file_description || '',
+                    file_type: s.file_type || '',
+                    period_ending: s.period_ending || '',
+                    sic_codes: (s.sics || []).join(', '),
+                    business_states: (s.biz_states || []).join(', '),
+                    incorporation_states: (s.inc_states || []).join(', '),
+                    file_numbers: (s.file_num || []).join(', '),
+                    items: (s.items || []).join(', '),
+                    primary_document_url: (cikInt && accStripped && primaryDoc) ? `https://www.sec.gov/Archives/edgar/data/${cikInt}/${accStripped}/${primaryDoc}` : ''
                 };
             });
             try {
@@ -2289,8 +2376,6 @@ const DIRECT_API = {
                 const d = await r.json();
                 return (d.data || []).map(x => {
                     const f = x.data || {};
-                    // Real FDIC field names: PSTALP (state postal), QBFDEP (deposits),
-                    // BIDNAME (acquiring bank), CERT (FDIC certificate #), URL (sometimes populated).
                     const deposits = f.QBFDEP ? `$${Number(f.QBFDEP).toLocaleString()}K` : 'n/a';
                     const cost = f.COST != null ? ` | Cost: $${Number(f.COST).toLocaleString()}K` : '';
                     const acquirer = f.BIDNAME ? ` | Acquired by ${f.BIDNAME}` : '';
@@ -2298,8 +2383,28 @@ const DIRECT_API = {
                         title: f.NAME || 'Unknown Bank',
                         description: `${f.CITYST || `${f.CITY || ''}, ${f.PSTALP || ''}`} | Deposits: ${deposits}${cost}${acquirer}`,
                         date: f.FAILDATE || '',
-                        // Prefer FDIC's own URL field when populated; otherwise the BankFind detail page by CERT.
-                        link: (f.URL && /^https?:/.test(f.URL)) ? f.URL : bankFindUrl(f.CERT)
+                        link: (f.URL && /^https?:/.test(f.URL)) ? f.URL : bankFindUrl(f.CERT),
+                        // Rich fields for the detail view:
+                        bank_name: f.NAME || '',
+                        city: f.CITY || '',
+                        state: f.PSTALP || '',
+                        deposits_thousands: f.QBFDEP || '',
+                        assets_thousands: f.QBFASSET || '',
+                        cost_to_fdic_thousands: f.COST,
+                        uninsured_deposits: f.UNINSDEP || '',
+                        acquiring_bank: f.BIDNAME || '',
+                        acquirer_city: f.BIDCITY || '',
+                        acquirer_state: f.BIDSTATE || '',
+                        resolution_type: f.RESTYPE || '',
+                        resolution_subtype: f.RESTYPE1 || '',
+                        resolution_date: f.RESDATE || '',
+                        fdic_certificate: f.CERT || '',
+                        fdic_id: f.FIN || '',
+                        charter_class: f.CHCLASS || '',
+                        insurance_fund: f.SAVR || '',
+                        failure_year: f.FAILYR || '',
+                        bank_status: f.BSTATUS || '',
+                        comments: f.COMMENTS || ''
                     };
                 });
             }
@@ -4303,9 +4408,11 @@ function selectSubSection(subId) {
 async function fetchAgencyData(searchQuery) {
     const container = document.getElementById('agency-content');
     container.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching data...</div>';
-    // Reset APOD index + table sort on new fetch (column names may differ across agencies).
+    // Reset APOD index, table sort, item detail on new fetch.
     apodIndex = 0;
     tableSortKey = null; tableSortDir = 'asc';
+    selectedItemIndex = null;
+    crossRefResults = null;
     // Hide view controls for special views (APOD)
     const viewControls = document.querySelector('.view-controls');
     if (viewControls) {
@@ -4391,28 +4498,36 @@ function renderData() {
         return;
     }
 
+    // Universal item-detail view: click any card/row → full-field detail + cross-ref loader.
+    if (selectedItemIndex !== null && currentData[selectedItemIndex]) {
+        renderItemDetail(container);
+        return;
+    }
+
     if (currentView === 'cards') {
         let html = '<div class="cards-grid">';
-        for (const item of currentData) {
+        for (let i = 0; i < currentData.length; i++) {
+            const item = currentData[i];
             const desc = (item.description || '').substring(0, 200);
             const dateStr = formatDate(item.date);
-            const link = item.link ? `<a href="${item.link}" target="_blank" rel="noopener">View Source &#8599;</a>` : '';
+            const link = item.link ? `<a href="${item.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View Source &#8599;</a>` : '';
 
-            // Extra fields
+            // Show a handful of extra fields inline (the rest are visible on click).
             let extras = '';
             for (const [k, v] of Object.entries(item)) {
-                if (!['title','description','date','link','error'].includes(k) && v) {
+                if (!['title','description','date','link','error'].includes(k) && !k.startsWith('_') && v) {
                     extras += `<span>${k}: ${v}</span> `;
                 }
             }
 
-            html += `<div class="data-card">
-                <h3>${item.title || 'Untitled'}</h3>
-                <p>${desc}</p>
+            html += `<div class="data-card" onclick="selectItem(${i})" title="Click for full details">
+                <h3>${escapeHtml(item.title || 'Untitled')}</h3>
+                <p>${escapeHtml(desc)}</p>
                 <div class="meta">
-                    ${dateStr ? `<span>${dateStr}</span>` : ''}
+                    ${dateStr ? `<span>${escapeHtml(dateStr)}</span>` : ''}
                     ${link}
-                    ${extras ? `<span style="opacity:0.6">${extras.substring(0, 100)}</span>` : ''}
+                    ${extras ? `<span style="opacity:0.6">${escapeHtml(extras.substring(0, 100))}</span>` : ''}
+                    <span style="color:var(--text-muted);margin-left:auto;font-size:11px;">Click for details →</span>
                 </div>
             </div>`;
         }
@@ -4436,11 +4551,14 @@ function renderData() {
         }
         html += '</tr></thead><tbody>';
         for (const row of rows) {
-            html += '<tr>';
+            // Click anywhere on the row → detail. Look up index by reference identity
+            // (handles sort: rows array may be reordered relative to currentData).
+            const idx = currentData.indexOf(row);
+            html += `<tr onclick="selectItem(${idx})" title="Click for full details">`;
             for (const k of keys) {
                 let val = row[k] || '';
                 if (typeof val === 'string' && val.startsWith('http')) {
-                    val = `<a href="${escapeHtml(val)}" target="_blank">Link &#8599;</a>`;
+                    val = `<a href="${escapeHtml(val)}" target="_blank" onclick="event.stopPropagation()">Link &#8599;</a>`;
                 } else if (typeof val === 'string' && val.length > 150) {
                     val = escapeHtml(val.substring(0, 150)) + '...';
                 } else if (typeof val === 'string') {
@@ -4458,6 +4576,150 @@ function renderData() {
 // Table sort state — persists across renders within the same agency view.
 let tableSortKey = null;
 let tableSortDir = 'asc';
+
+// Universal item detail view + cross-reference loader.
+// Clicking any card or table row opens a detail panel that shows every field of
+// the record. From there the user can launch a parallel cross-agency search to
+// pull related context.
+let selectedItemIndex = null;       // index into currentData, or null = list view
+let crossRefResults = null;         // { agency_id: rows[] } | { _loading: true } | null
+let crossRefBusy = false;
+
+function selectItem(index) {
+    selectedItemIndex = index;
+    crossRefResults = null;
+    renderData();
+}
+function closeDetail() {
+    selectedItemIndex = null;
+    crossRefResults = null;
+    renderData();
+}
+
+// Strip noise from a record title so a cross-search has a clean entity.
+// "Acme Corp (CIK 0001234567) — 10-K" → "Acme Corp"
+function extractEntityFromItem(item) {
+    if (!item) return '';
+    let s = (item.company_name || item.title || '').toString();
+    s = s.replace(/\s*\(CIK\s*\d+\)\s*/i, ' ');
+    s = s.replace(/\s*—.*$/, '');            // strip everything after em-dash
+    s = s.replace(/\s*-\s*(8-K|10-K|10-Q|13F|S-1)\b.*$/i, '');
+    s = s.replace(/[,]?\s*(Inc|Corp|LLC|Ltd|N\.A\.|L\.P\.|Holdings|Bank|Co)\.?$/i, '');
+    return s.trim();
+}
+
+async function loadCrossReferences() {
+    if (crossRefBusy) return;
+    const item = currentData[selectedItemIndex];
+    if (!item) return;
+    const entity = extractEntityFromItem(item);
+    if (!entity || entity.length < 2) {
+        crossRefResults = { _error: 'Could not extract a searchable entity from this record.' };
+        renderData();
+        return;
+    }
+    // Pick agencies to cross-search: skip current, only those with a fetch fn,
+    // cap at 6 to avoid burning quota.
+    const others = (agencies || []).filter(a =>
+        a.id !== currentAgency?.id && DIRECT_API[a.id]?.fetch
+    ).slice(0, 6);
+    crossRefBusy = true;
+    crossRefResults = { _loading: true, _entity: entity, _agencies: others.map(a => a.id) };
+    renderData();
+    const settled = await Promise.allSettled(others.map(async a => {
+        try {
+            const rows = await DIRECT_API[a.id].fetch('', entity, { limit: 5 });
+            return { id: a.id, rows: Array.isArray(rows) ? rows : [] };
+        } catch (e) {
+            return { id: a.id, error: e.message || String(e) };
+        }
+    }));
+    const results = { _entity: entity };
+    for (const s of settled) {
+        const v = s.value || {};
+        if (v.rows && v.rows.length) {
+            // Filter out maintenance placeholders ("temporarily unreachable", etc.).
+            const real = v.rows.filter(r => !/temporarily unreachable|unavailable|requires a data\.gov|type a keyword/i.test(r.title || ''));
+            if (real.length) results[v.id] = real;
+        }
+    }
+    crossRefResults = results;
+    crossRefBusy = false;
+    renderData();
+}
+
+// Render the detail view for a single record + any loaded cross-references.
+function renderItemDetail(container) {
+    const item = currentData[selectedItemIndex];
+    if (!item) { closeDetail(); return; }
+    // Show every field except internals (keys starting with _).
+    const entries = Object.entries(item).filter(([k, v]) =>
+        !k.startsWith('_') && v !== null && v !== undefined && v !== ''
+    );
+    const isInternal = (k) => k.startsWith('_');
+    const fieldRow = (k, v) => {
+        const isLink = typeof v === 'string' && /^https?:/.test(v);
+        let body;
+        if (isLink) {
+            body = `<a href="${escapeHtml(v)}" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all;">${escapeHtml(v)} ↗</a>`;
+        } else if (typeof v === 'object') {
+            body = `<pre style="font-family:var(--mono);font-size:11px;color:var(--text-secondary);margin:0;white-space:pre-wrap;max-height:240px;overflow:auto;">${escapeHtml(JSON.stringify(v, null, 2))}</pre>`;
+        } else {
+            body = escapeHtml(String(v));
+        }
+        return `<div class="detail-row">
+            <div class="detail-key">${escapeHtml(k)}</div>
+            <div class="detail-val">${body}</div>
+        </div>`;
+    };
+    let html = `
+        <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;">
+            <button onclick="closeDetail()" class="detail-btn">← Back to list</button>
+            ${item.link ? `<a href="${escapeHtml(item.link)}" target="_blank" rel="noopener" class="detail-btn detail-btn-link">View on source ↗</a>` : ''}
+            <button onclick="loadCrossReferences()" class="detail-btn detail-btn-primary" ${crossRefBusy ? 'disabled' : ''}>
+                ${crossRefBusy ? 'Searching…' : '+ Load Additional Agency Data'}
+            </button>
+            <span class="detail-badge">${escapeHtml(currentAgency?.acronym || currentAgency?.id || '')}</span>
+        </div>
+        <h2 class="detail-title">${escapeHtml(item.title || 'Record')}</h2>
+        ${item.date ? `<div class="detail-date">${escapeHtml(formatDate(item.date))}</div>` : ''}
+        <div class="detail-fields">${entries.map(([k, v]) => fieldRow(k, v)).join('')}</div>
+    `;
+    // Cross-reference results.
+    if (crossRefResults) {
+        if (crossRefResults._loading) {
+            const ids = (crossRefResults._agencies || []).join(', ');
+            html += `<div class="detail-xref-loading">
+                <div class="spinner" style="display:inline-block;margin-right:8px;"></div>
+                Searching ${ids} for "${escapeHtml(crossRefResults._entity || '')}"…
+            </div>`;
+        } else if (crossRefResults._error) {
+            html += `<div class="detail-xref-empty">${escapeHtml(crossRefResults._error)}</div>`;
+        } else {
+            const groups = Object.entries(crossRefResults).filter(([k]) => !k.startsWith('_'));
+            html += `<h3 class="detail-xref-heading">Related records across other agencies for "${escapeHtml(crossRefResults._entity || '')}"</h3>`;
+            if (groups.length === 0) {
+                html += `<div class="detail-xref-empty">No matches found in other agencies for this entity.</div>`;
+            } else {
+                for (const [aid, rows] of groups) {
+                    const ag = agencies.find(a => a.id === aid);
+                    html += `<div class="detail-xref-group">
+                        <h4>${escapeHtml((ag?.acronym || aid).toUpperCase())} <span class="detail-xref-count">${rows.length} match${rows.length === 1 ? '' : 'es'}</span></h4>`;
+                    for (const r of rows.slice(0, 5)) {
+                        html += `<div class="detail-xref-card">
+                            <div class="detail-xref-title">${escapeHtml(r.title || '(no title)')}</div>
+                            ${r.description ? `<div class="detail-xref-desc">${escapeHtml(String(r.description).substring(0, 220))}</div>` : ''}
+                            ${r.link ? `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener" class="detail-xref-link">View ↗</a>` : ''}
+                            ${r.date ? `<span class="detail-xref-date">${escapeHtml(formatDate(r.date))}</span>` : ''}
+                        </div>`;
+                    }
+                    html += `</div>`;
+                }
+            }
+        }
+    }
+    container.innerHTML = html;
+}
 
 function sortTable(key) {
     if (tableSortKey === key) {
