@@ -274,7 +274,12 @@
             position: sticky;
             top: 0;
             z-index: 1;
+            cursor: pointer;
+            user-select: none;
         }
+        .data-table th:hover { color: var(--accent); background: var(--bg-hover); }
+        .data-table th .th-arrow { display: inline-block; margin-left: 6px; opacity: 0.4; font-size: 9px; }
+        .data-table th.sort-active .th-arrow { opacity: 1; color: var(--accent); }
         .data-table td {
             padding: 8px 12px;
             border-bottom: 1px solid var(--border);
@@ -1820,31 +1825,206 @@ function fallbackUrl(slug, directUrl, flaskRoute) {
     return IS_STATIC_HOST ? proxyUrl(slug, directUrl) : `${API_BASE}${flaskRoute}`;
 }
 
+// ========== SEC EDGAR HELPERS ==========
+// data.sec.gov has no CORS, so static-host calls go through the Worker (slug 'sec_data').
+// The ticker→CIK file lives on www.sec.gov (slug 'sec_www').
+
+// Cached ticker→CIK index (downloaded once per session).
+let _secTickerIndex = null;
+async function getSecTickerIndex() {
+    if (_secTickerIndex) return _secTickerIndex;
+    const directUrl = 'https://www.sec.gov/files/company_tickers.json';
+    const tryFetch = async (url) => {
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) return null;
+        const d = await r.json();
+        // File is an object {0:{cik_str,ticker,title}, 1:{...}, ...}. Flatten.
+        const list = Object.values(d || {});
+        const byTicker = new Map();
+        const byName = [];
+        for (const row of list) {
+            if (!row || !row.ticker) continue;
+            const t = String(row.ticker).toUpperCase();
+            const cik = String(row.cik_str).padStart(10, '0');
+            byTicker.set(t, { cik, title: row.title || t });
+            byName.push({ cik, title: (row.title || '').toUpperCase(), ticker: t });
+        }
+        return { byTicker, byName };
+    };
+    try {
+        const direct = await tryFetch(directUrl);
+        if (direct) { _secTickerIndex = direct; return direct; }
+    } catch {}
+    if (IS_STATIC_HOST) {
+        try {
+            const viaProxy = await tryFetch(proxyUrl('sec_www', directUrl));
+            if (viaProxy) { _secTickerIndex = viaProxy; return viaProxy; }
+        } catch {}
+    }
+    return null;
+}
+
+// Accept ticker (AAPL), 10-digit CIK (0000320193 or 320193), or company-name substring.
+async function resolveSecCik(query) {
+    const q = String(query || '').trim();
+    if (!q) return null;
+    // 10-digit CIK or any all-digit string → pad and return.
+    if (/^\d{1,10}$/.test(q)) return q.padStart(10, '0');
+    const idx = await getSecTickerIndex();
+    if (!idx) return null;
+    // Exact ticker hit.
+    const hit = idx.byTicker.get(q.toUpperCase());
+    if (hit) return hit.cik;
+    // Substring match on company title.
+    const upper = q.toUpperCase();
+    const candidates = idx.byName.filter(r => r.title.includes(upper));
+    if (candidates.length === 0) return null;
+    // Prefer exact-prefix matches.
+    candidates.sort((a, b) => {
+        const ap = a.title.startsWith(upper) ? 0 : 1;
+        const bp = b.title.startsWith(upper) ? 0 : 1;
+        return ap - bp || a.title.length - b.title.length;
+    });
+    return candidates[0].cik;
+}
+
+async function fetchSecSubmissions(cik, lim) {
+    const directUrl = `https://data.sec.gov/submissions/CIK${cik}.json`;
+    const tryFetch = async (url) => {
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) return null;
+        return r.json();
+    };
+    let data = null;
+    try { data = await tryFetch(directUrl); } catch {}
+    if (!data && IS_STATIC_HOST) {
+        try { data = await tryFetch(proxyUrl('sec_data', directUrl)); } catch {}
+    }
+    if (!data) return [{ title: 'SEC submissions API unreachable', description: 'Try again shortly.', date: '', link: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}` }];
+    const name = data.name || `CIK ${cik}`;
+    const tickers = (data.tickers || []).join(', ');
+    const recent = data.filings?.recent || {};
+    const n = recent.accessionNumber?.length || 0;
+    const rows = [];
+    for (let i = 0; i < Math.min(n, lim); i++) {
+        const acc = recent.accessionNumber[i] || '';
+        const accStripped = acc.replace(/-/g, '');
+        const form = recent.form?.[i] || '';
+        const desc = recent.primaryDocDescription?.[i] || '';
+        const doc = recent.primaryDocument?.[i] || '';
+        const date = recent.filingDate?.[i] || '';
+        const link = (acc && doc)
+            ? `https://www.sec.gov/Archives/edgar/data/${parseInt(cik, 10)}/${accStripped}/${doc}`
+            : `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}`;
+        rows.push({
+            title: `${name}${tickers ? ' (' + tickers + ')' : ''} — ${form}`,
+            description: desc || `Accession ${acc}`,
+            date, link, form
+        });
+    }
+    return rows.length ? rows : [{ title: name, description: `No recent filings for CIK ${cik}.`, date: '', link: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}` }];
+}
+
+async function fetchSecCompanyFacts(cik, lim) {
+    const directUrl = `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`;
+    const tryFetch = async (url) => {
+        const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (!r.ok) return null;
+        return r.json();
+    };
+    let data = null;
+    try { data = await tryFetch(directUrl); } catch {}
+    if (!data && IS_STATIC_HOST) {
+        try { data = await tryFetch(proxyUrl('sec_data', directUrl)); } catch {}
+    }
+    if (!data) return [{ title: 'SEC XBRL API unreachable', description: 'Try again shortly.', date: '', link: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}` }];
+    const name = data.entityName || `CIK ${cik}`;
+    const usgaap = data.facts?.['us-gaap'] || {};
+    // Surface the most useful concepts first.
+    const concepts = ['Revenues','RevenueFromContractWithCustomerExcludingAssessedTax','NetIncomeLoss','Assets','Liabilities','StockholdersEquity','CashAndCashEquivalentsAtCarryingValue','LongTermDebt','OperatingIncomeLoss','EarningsPerShareBasic'];
+    const rows = [];
+    for (const c of concepts) {
+        const f = usgaap[c];
+        if (!f) continue;
+        // Find the most recent USD value (or first available unit).
+        const units = f.units || {};
+        const unitKey = Object.keys(units)[0];
+        const values = units[unitKey] || [];
+        if (values.length === 0) continue;
+        // Prefer FY 10-K then most recent.
+        const sorted = values.slice().sort((a, b) => (b.end || '').localeCompare(a.end || ''));
+        const latest = sorted.find(v => v.form === '10-K') || sorted[0];
+        if (!latest) continue;
+        const val = typeof latest.val === 'number' ? latest.val.toLocaleString() : String(latest.val);
+        rows.push({
+            title: `${f.label || c} (${name})`,
+            description: `${val} ${unitKey} — ${latest.form || ''} ${latest.fp || ''} ${latest.fy || ''} (period ending ${latest.end || ''})`,
+            date: latest.end || '',
+            link: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}`,
+            concept: c
+        });
+        if (rows.length >= lim) break;
+    }
+    return rows.length ? rows : [{ title: name, description: `No XBRL facts available for CIK ${cik}.`, date: '', link: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}` }];
+}
+
 // ========== CLIENT-SIDE DIRECT API LAYER ==========
 // These functions call government APIs directly from the browser
 const DIRECT_API = {
     sec: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
+            // SEC's documented data APIs live at data.sec.gov and do NOT support CORS,
+            // so static-host calls have to go through our Worker (slugs: sec/sec_data/sec_www).
+            // Self-hosters and future-CORS deploys still try direct first.
+            const ftFromSub = ['8-K','10-K','10-Q','13F','S-1'];
+            if (sub === 'company' || sub === 'company_facts') {
+                // Resolve a ticker or company name to a CIK via the static tickers file,
+                // then call /submissions/CIK*.json (filings) or /api/xbrl/companyfacts (XBRL).
+                if (!query) {
+                    return [{
+                        title: 'Type a ticker or company name above',
+                        description: 'e.g. "AAPL", "Apple", "0000320193". I\'ll look up the CIK and pull live filings or financial facts straight from SEC.',
+                        date: '', link: 'https://www.sec.gov/cgi-bin/browse-edgar'
+                    }];
+                }
+                const cik = await resolveSecCik(query);
+                if (!cik) {
+                    return [{ title: `No SEC company matched "${query}"`,
+                        description: 'Try the exact ticker (AAPL), full company name, or a 10-digit CIK.',
+                        date: '', link: `https://www.sec.gov/cgi-bin/browse-edgar?company=${encodeURIComponent(query)}&action=getcompany` }];
+                }
+                if (sub === 'company') return await fetchSecSubmissions(cik, lim);
+                return await fetchSecCompanyFacts(cik, lim);
+            }
+            // Form-specific browse (8-K / 10-K / 10-Q / 13F / S-1) and Full-Text Search
+            // both use the (unofficial but stable) efts.sec.gov backend through our Worker.
+            const isFulltext = sub === 'fulltext';
             let dateFilter = '';
             if (opts.dateFrom) dateFilter += `&dateRange=custom&startdt=${opts.dateFrom}`;
             if (opts.dateTo) dateFilter += `&enddt=${opts.dateTo}`;
-            // efts.sec.gov (EDGAR full-text search) sends no CORS headers, so the
-            // direct browser fetch always fails. Try direct first (works for self-
-            // hosters / future CORS), then fall back to the Worker on static hosts.
-            const directUrl = query
-                ? `https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(query)}%22&from=0&size=${lim}${dateFilter}`
-                : `https://efts.sec.gov/LATEST/search-index?q=%22${sub || '8-K'}%22&forms=${sub || '8-K'}&from=0&size=${lim}${dateFilter}`;
-            const ft = sub || '8-K';
-            const parseSec = (d) => (d.hits?.hits || []).map(h => ({
-                title: (h._source?.display_names || [''])[0] || h._source?.entity_name || '',
-                description: query ? (h._source?.file_description || '') : `${ft} filing - ${h._source?.file_description || ''}`,
-                date: h._source?.file_date || '',
-                link: h._source?.entity_id
-                    ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${h._source.entity_id}`
-                    : `https://www.sec.gov/cgi-bin/browse-edgar?company=${encodeURIComponent(query || '')}&action=getcompany`,
-                form_type: h._source?.form_type || ft
-            }));
+            const ft = ftFromSub.includes(sub) ? sub : '';
+            let directUrl;
+            if (isFulltext && query) {
+                directUrl = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(query)}&from=0&size=${lim}${dateFilter}`;
+            } else if (query) {
+                directUrl = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(query)}${ft ? `&forms=${ft}` : ''}&from=0&size=${lim}${dateFilter}`;
+            } else {
+                directUrl = `https://efts.sec.gov/LATEST/search-index?q=%22${ft || '8-K'}%22&forms=${ft || '8-K'}&from=0&size=${lim}${dateFilter}`;
+            }
+            const parseSec = (d) => (d.hits?.hits || []).slice(0, lim).map(h => {
+                const s = h._source || {};
+                const cik = (s.ciks || [''])[0];
+                const accNoStripped = (h._id || '').split(':')[0].replace(/-/g, '');
+                const docLink = (cik && accNoStripped) ? `https://www.sec.gov/Archives/edgar/data/${parseInt(cik, 10)}/${accNoStripped}/` : `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}`;
+                return {
+                    title: (s.display_names || [''])[0] || s.entity_name || '',
+                    description: `${s.form || ft || ''}${s.file_description ? ' · ' + s.file_description : ''}`.trim(),
+                    date: s.file_date || '',
+                    link: docLink,
+                    form: s.form || ft
+                };
+            });
             try {
                 const r = await fetch(directUrl, { signal: AbortSignal.timeout(6000) });
                 if (r.ok) return parseSec(await r.json());
@@ -3095,8 +3275,17 @@ const CLIENT_AGENCIES = [
     {id:'sec',name:'Securities and Exchange Commission',acronym:'SEC',description:'Corporate filings, financial disclosures, and securities data from EDGAR',
      base_url:'https://data.sec.gov',auth_required:false,has_search:true,search_placeholder:'Search company name or CIK...',
      data_categories:['Financial','Corporate','Securities','Compliance'],
-     sub_sections:[{id:'8-K',name:'8-K Current Reports'},{id:'10-K',name:'10-K Annual Reports'},{id:'10-Q',name:'10-Q Quarterly'},{id:'13F',name:'13F Holdings'},{id:'S-1',name:'S-1 IPO Filings'}],
-     endpoints:['8-K','10-K','10-Q','13F','S-1','Company Search']},
+     sub_sections:[
+        {id:'company',name:'Company Filings (by ticker/CIK)'},
+        {id:'company_facts',name:'Company Financials (XBRL)'},
+        {id:'8-K',name:'8-K Current Reports'},
+        {id:'10-K',name:'10-K Annual Reports'},
+        {id:'10-Q',name:'10-Q Quarterly'},
+        {id:'13F',name:'13F Holdings'},
+        {id:'S-1',name:'S-1 IPO Filings'},
+        {id:'fulltext',name:'Full-Text Search'}
+     ],
+     endpoints:['Company Filings','XBRL Financials','8-K','10-K','10-Q','13F','S-1','Full-Text']},
     {id:'fda',name:'Food and Drug Administration',acronym:'FDA',description:'Drug adverse events, recalls, 510(k) device clearances, and food safety data',
      base_url:'https://api.fda.gov',auth_required:false,has_search:true,search_placeholder:'Search drug name, device, or keyword...',
      data_categories:['Health','Safety','Medical Devices','Pharmaceuticals'],
@@ -4114,8 +4303,9 @@ function selectSubSection(subId) {
 async function fetchAgencyData(searchQuery) {
     const container = document.getElementById('agency-content');
     container.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching data...</div>';
-    // Reset APOD index on new fetch
+    // Reset APOD index + table sort on new fetch (column names may differ across agencies).
     apodIndex = 0;
+    tableSortKey = null; tableSortDir = 'asc';
     // Hide view controls for special views (APOD)
     const viewControls = document.querySelector('.view-controls');
     if (viewControls) {
@@ -4229,22 +4419,32 @@ function renderData() {
         html += '</div>';
         container.innerHTML = html;
     } else {
-        // Table view
+        // Table view with click-to-sort headers.
         if (currentData.length === 0) return;
         const keys = Object.keys(currentData[0]).filter(k => k !== 'error');
+        // Apply current sort (if any) to a copy of currentData.
+        let rows = currentData.slice();
+        if (tableSortKey && keys.includes(tableSortKey)) {
+            const dir = tableSortDir === 'desc' ? -1 : 1;
+            rows.sort((a, b) => dir * compareCells(a[tableSortKey], b[tableSortKey]));
+        }
         let html = '<table class="data-table"><thead><tr>';
         for (const k of keys) {
-            html += `<th>${k}</th>`;
+            const active = k === tableSortKey;
+            const arrow = active ? (tableSortDir === 'desc' ? '▼' : '▲') : '↕';
+            html += `<th class="${active ? 'sort-active' : ''}" onclick="sortTable('${k.replace(/'/g, "\\'")}')">${escapeHtml(k)}<span class="th-arrow">${arrow}</span></th>`;
         }
         html += '</tr></thead><tbody>';
-        for (const row of currentData) {
+        for (const row of rows) {
             html += '<tr>';
             for (const k of keys) {
                 let val = row[k] || '';
                 if (typeof val === 'string' && val.startsWith('http')) {
-                    val = `<a href="${val}" target="_blank">Link &#8599;</a>`;
+                    val = `<a href="${escapeHtml(val)}" target="_blank">Link &#8599;</a>`;
                 } else if (typeof val === 'string' && val.length > 150) {
-                    val = val.substring(0, 150) + '...';
+                    val = escapeHtml(val.substring(0, 150)) + '...';
+                } else if (typeof val === 'string') {
+                    val = escapeHtml(val);
                 }
                 html += `<td>${val}</td>`;
             }
@@ -4253,6 +4453,43 @@ function renderData() {
         html += '</tbody></table>';
         container.innerHTML = html;
     }
+}
+
+// Table sort state — persists across renders within the same agency view.
+let tableSortKey = null;
+let tableSortDir = 'asc';
+
+function sortTable(key) {
+    if (tableSortKey === key) {
+        // Toggle direction; third click clears the sort.
+        if (tableSortDir === 'asc') tableSortDir = 'desc';
+        else { tableSortKey = null; tableSortDir = 'asc'; }
+    } else {
+        tableSortKey = key;
+        tableSortDir = 'asc';
+    }
+    renderData();   // re-render current view with the new sort applied
+}
+
+// Cell comparator that handles numbers, ISO/locale dates, and strings.
+function compareCells(a, b) {
+    const na = a == null ? '' : a;
+    const nb = b == null ? '' : b;
+    // Empty values always sort last (regardless of direction caller will invert).
+    if (na === '' && nb === '') return 0;
+    if (na === '') return 1;
+    if (nb === '') return -1;
+    // Numeric?
+    const nfa = typeof na === 'number' ? na : (typeof na === 'string' && /^-?\d+(\.\d+)?$/.test(na.trim()) ? parseFloat(na) : null);
+    const nfb = typeof nb === 'number' ? nb : (typeof nb === 'string' && /^-?\d+(\.\d+)?$/.test(nb.trim()) ? parseFloat(nb) : null);
+    if (nfa !== null && nfb !== null) return nfa - nfb;
+    // Date-ish? Try Date parse on strings that look like dates.
+    if (typeof na === 'string' && typeof nb === 'string' &&
+        (/\d{4}-\d{2}-\d{2}/.test(na) || /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(na))) {
+        const da = Date.parse(na), db = Date.parse(nb);
+        if (!isNaN(da) && !isNaN(db)) return da - db;
+    }
+    return String(na).localeCompare(String(nb), undefined, { numeric: true, sensitivity: 'base' });
 }
 
 // NASA APOD special view

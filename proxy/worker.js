@@ -3,7 +3,9 @@
 // Strips client auth/cookie headers; pins Access-Control-Allow-Origin to our known hosts.
 
 const UPSTREAMS = {
-  sec:         'https://efts.sec.gov',
+  sec:         'https://efts.sec.gov',         // EDGAR full-text search (used today)
+  sec_data:    'https://data.sec.gov',         // documented APIs: submissions, XBRL facts, frames
+  sec_www:     'https://www.sec.gov',          // ticker→CIK static file at /files/company_tickers.json
   bls:         'https://api.bls.gov',
   nih_pubmed:  'https://eutils.ncbi.nlm.nih.gov',
   loc:         'https://www.loc.gov',
