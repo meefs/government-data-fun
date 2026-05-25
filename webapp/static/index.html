@@ -14,11 +14,15 @@
             --accent: #00d4aa;
             --accent-dim: #00b894;
             --accent-glow: rgba(0,212,170,0.12);
-            --text-primary: #c9d1d9;
-            --text-secondary: #9ca8b4;
-            --text-muted: #5a6370;
-            --border: #1c2030;
-            --border-bright: #2a3040;
+            /* Brightened for WCAG AA (4.5:1+) against every background.
+               muted was 2.66:1 (failed); now 5.5–6.6:1. Primary/secondary
+               also bumped a notch for comfortable reading. */
+            --text-primary: #e6ebf2;
+            --text-secondary: #b6c0cc;
+            --text-muted: #8d97a5;
+            /* Border was nearly identical to bg-card (cards looked edgeless). */
+            --border: #262c3a;
+            --border-bright: #3a4258;
             --success: #2dd4a0;
             --warning: #e3b341;
             --danger: #f85149;
@@ -34,6 +38,9 @@
             height: 100vh;
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
+            /* Comfortable baseline so any unstyled text reads cleanly. */
+            font-size: 14px;
+            line-height: 1.5;
         }
         /* Layout */
         .app { display: flex; height: 100vh; }
@@ -60,7 +67,7 @@
         }
         .sidebar-header p {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             color: #6b7685;
             margin-top: 4px;
             letter-spacing: 0.5px;
@@ -74,7 +81,7 @@
         .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 0; }
         .nav-section-title {
             font-family: var(--mono);
-            font-size: 9px;
+            font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 1.5px;
@@ -135,7 +142,7 @@
         }
         .topbar .source-badge {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             padding: 3px 8px;
             border-radius: 0;
             background: var(--bg-card);
@@ -150,7 +157,7 @@
         }
         .sub-tab {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             padding: 4px 10px;
             border-radius: 0;
             border: 1px solid var(--border);
@@ -260,7 +267,7 @@
             background: var(--bg-secondary);
             color: var(--accent-dim);
             font-weight: 600;
-            font-size: 9px;
+            font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 1px;
             border-bottom: 1px solid var(--accent-dim);
@@ -317,7 +324,7 @@
             display: flex;
             gap: 12px;
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             color: var(--text-muted);
         }
         .data-card .meta a { color: var(--accent); }
@@ -347,7 +354,7 @@
         }
         .stats-box .stat-label {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -368,7 +375,7 @@
         }
         .filter-bar .filter-label {
             font-family: var(--mono);
-            font-size: 9px;
+            font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -376,7 +383,7 @@
         }
         .filter-btn {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             padding: 4px 10px;
             border-radius: 0;
             border: 1px solid var(--border);
@@ -388,7 +395,7 @@
         .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
         .filter-btn.active { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); font-weight: 600; }
         .filter-btn .filter-count {
-            font-size: 9px;
+            font-size: 11px;
             opacity: 0.6;
             margin-left: 3px;
         }
@@ -410,14 +417,14 @@
             background: transparent;
             color: var(--text-muted);
             cursor: pointer;
-            font-size: 10px;
+            font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             transition: all 0.12s;
         }
         .view-btn:hover { border-color: var(--accent); color: var(--accent); }
         .view-btn.active { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); font-weight: 600; }
-        .result-count { font-family: var(--mono); font-size: 10px; color: var(--text-muted); margin-left: auto; }
+        .result-count { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-left: auto; }
 
         /* Chatbot */
         .chat-container {
@@ -525,7 +532,7 @@
         .modal h3 { margin-bottom: 16px; font-family: var(--mono); font-size: 14px; color: var(--accent); }
         .modal label {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             color: var(--text-muted);
             display: block;
             margin-bottom: 4px;
@@ -710,7 +717,7 @@
         .provider-card:hover { border-color: var(--accent); }
         .provider-card.selected { border-color: var(--accent); background: var(--accent-glow); }
         .provider-card h4 { font-family: var(--mono); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
-        .provider-card .price { font-family: var(--mono); font-size: 10px; color: var(--success); }
+        .provider-card .price { font-family: var(--mono); font-size: 11px; color: var(--success); }
         .provider-card .desc { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
         .provider-setup-option {
             background: var(--bg-hover);
@@ -751,7 +758,7 @@
         .btn-primary:hover { background: var(--accent-dim); }
         .free-badge {
             display: inline-block;
-            font-size: 10px;
+            font-size: 11px;
             padding: 2px 6px;
             border-radius: 0;
             background: rgba(52,211,153,0.15);
@@ -795,7 +802,7 @@
         }
         .agency-overview-card .acronym {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             color: var(--text-muted);
             margin-bottom: 6px;
         }
@@ -812,7 +819,7 @@
         }
         .tag {
             font-family: var(--mono);
-            font-size: 9px;
+            font-size: 11px;
             padding: 2px 6px;
             border-radius: 0;
             background: var(--bg-primary);
@@ -822,7 +829,7 @@
         /* Agency preview items */
         .agency-preview-item {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             color: var(--text-secondary);
             padding: 3px 0;
             border-top: 1px solid var(--border);
@@ -849,7 +856,7 @@
             background: transparent;
             color: var(--text-secondary);
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             cursor: pointer;
             transition: all 0.12s;
         }
@@ -910,7 +917,7 @@
         }
         .fcc-field-label {
             font-family: var(--mono);
-            font-size: 9px;
+            font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 1px;
             color: var(--text-muted);
@@ -934,7 +941,7 @@
         }
         .fcc-link-btn {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             padding: 5px 12px;
             border-radius: 0;
             border: 1px solid var(--accent-dim);
@@ -980,7 +987,7 @@
         }
         .fcc-result-summary .fcc-rdate {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             color: var(--text-muted);
         }
         .fcc-result-detail {
@@ -1019,7 +1026,7 @@
         }
         .agency-landing-header .landing-meta span {
             font-family: var(--mono);
-            font-size: 10px;
+            font-size: 11px;
             padding: 3px 8px;
             border-radius: 0;
             border: 1px solid var(--border);
@@ -1063,7 +1070,7 @@
         }
         .endpoint-card .ep-tag {
             font-family: var(--mono);
-            font-size: 9px;
+            font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -1135,7 +1142,7 @@
         }
         .fetch-controls label {
             font-family: var(--mono);
-            font-size: 9px;
+            font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -1382,7 +1389,7 @@ Free mode is active — no API key needed, just start chatting. For alternate pr
         <div style="margin-bottom:14px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
                 <span style="font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;">Configured keys</span>
-                <button onclick="renderKeyHealthPanels()" title="Re-check all keys" style="border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:10px;">Re-check</button>
+                <button onclick="renderKeyHealthPanels()" title="Re-check all keys" style="border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:11px;">Re-check</button>
             </div>
             <div data-key-health-panel style="margin-bottom:12px;"></div>
         </div>
@@ -1400,7 +1407,7 @@ Free mode is active — no API key needed, just start chatting. For alternate pr
             <div style="position:relative;">
                 <input id="modal-key-input" type="password" placeholder="Enter API key..." oninput="onModalKeyInput()" style="padding-right:54px;">
                 <button type="button" id="modal-key-show" onclick="toggleModalKeyVisibility()" title="Show/hide key"
-                    style="position:absolute;right:6px;top:50%;transform:translateY(-50%);border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:10px;">Show</button>
+                    style="position:absolute;right:6px;top:50%;transform:translateY(-50%);border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:11px;">Show</button>
             </div>
             <div id="modal-key-validation" style="margin-top:6px;min-height:14px;"></div>
             <div id="openai-key-type-info" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--border);background:var(--bg-primary);font-size:11px;line-height:1.5;">
@@ -1412,7 +1419,7 @@ Free mode is active — no API key needed, just start chatting. For alternate pr
         <div style="position:relative;">
             <input id="datagov-key-input" type="password" placeholder="Your data.gov API key" oninput="onDatagovKeyInput()" style="padding-right:54px;">
             <button type="button" id="modal-datagov-show" onclick="toggleModalDatagovVisibility()" title="Show/hide key"
-                style="position:absolute;right:6px;top:50%;transform:translateY(-50%);border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:10px;">Show</button>
+                style="position:absolute;right:6px;top:50%;transform:translateY(-50%);border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:11px;">Show</button>
         </div>
         <div id="modal-datagov-validation" style="margin-top:6px;min-height:14px;"></div>
 
@@ -1711,7 +1718,7 @@ async function renderKeyHealthPanels() {
                 <span style="flex:0 0 72px;color:var(--text-secondary);">${p.name}</span>
                 <span class="khp-mask" style="flex:1;color:var(--text-muted);font-family:var(--font-mono, monospace);font-size:11px;">${mask}</span>
                 <span class="khp-status" style="color:var(--text-muted);font-size:11px;">${key ? 'checking…' : '—'}</span>
-                ${key ? `<button onclick="revokeKey('${p.id}')" class="khp-revoke" title="Remove this key" style="border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:10px;">Revoke</button>` : ''}
+                ${key ? `<button onclick="revokeKey('${p.id}')" class="khp-revoke" title="Remove this key" style="border:1px solid var(--border);background:transparent;color:var(--text-secondary);padding:2px 8px;border-radius:0;cursor:pointer;font-size:11px;">Revoke</button>` : ''}
             </div>`;
         }).join('');
     }
@@ -2631,26 +2638,41 @@ const DIRECT_API = {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
             const q = query || 'federal government';
-            const directUrl = `https://catalog.archives.gov/api/v2/records/search?q=${encodeURIComponent(q)}&limit=${lim}`;
-            // Parse ES-style (body.hits.hits[*]._source) or v2 flat (records[]) shapes.
+            // NARA's documented /api/v2/* endpoints serve the SPA HTML, not JSON.
+            // The actual working backend is at /proxy/* (same path their UI calls).
+            // Returns 20 hits per request; `limit` query param BREAKS it (returns HTML),
+            // so we never send it and trim client-side.
+            const pathBySub = {
+                records:   `/proxy/records/search?q=${encodeURIComponent(q)}`,
+                annotated: `/proxy/records/search/by-contribution?q=${encodeURIComponent(q)}`,
+            };
+            const path = pathBySub[sub] || pathBySub.records;
+            const directUrl = `https://catalog.archives.gov${path}`;
+            // /proxy responses wrap an Elasticsearch result: {body:{hits:{hits:[...]}}}.
+            // Each hit's _source has {metadata, record}; the user-facing fields live on _source.record.
             const parseNara = (d) => {
-                const hits = d?.body?.hits?.hits || d?.records || d?.results || [];
+                const inner = d?.body || d;
+                const hits = inner?.hits?.hits || [];
                 return hits.slice(0, lim).map(h => {
-                    const src = h._source || h;
+                    const rec = h._source?.record || h._source || {};
+                    const naId = rec.naId || h._id;
+                    const desc = rec.scopeAndContentNote || rec.contentNote || rec.generalNoteArray?.[0]?.note || '';
+                    const date = rec.coverageStartDate?.logicalDate || rec.coverageStartDate || rec.productionDates?.[0]?.logicalDate || rec.releaseDate || '';
+                    const collection = rec.dataControlGroup?.groupName || '';
                     return {
-                        title: src.title || 'Archive Record',
-                        description: (src.scopeAndContentNote || src.scopeAndContent || src.description || '').toString().substring(0,300),
-                        date: src.inclusiveDates?.inclusiveStartDate?.year || src.dateCreated || src.date || '',
-                        link: (h._id || src.naId) ? `https://catalog.archives.gov/id/${h._id || src.naId}` : 'https://catalog.archives.gov/'
+                        title: rec.title || 'Archive Record',
+                        description: [collection, String(desc).substring(0, 280)].filter(Boolean).join(' — '),
+                        date: String(date).slice(0, 10),
+                        link: naId ? `https://catalog.archives.gov/id/${naId}` : `https://catalog.archives.gov/search?q=${encodeURIComponent(q)}`
                     };
                 });
             };
-            const looksLikeJson = (body) => body && body.trim().startsWith('{');
+            const looksJson = (b) => b && b.trim().startsWith('{');
             const tryFetch = async (url) => {
-                const r = await fetch(url, {signal: AbortSignal.timeout(6000)});
+                const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
                 if (!r.ok) return null;
                 const text = await r.text();
-                if (!looksLikeJson(text)) return null;   // NARA currently serves SPA HTML on /api/v2/records
+                if (!looksJson(text)) return null;
                 try { return parseNara(JSON.parse(text)); } catch { return null; }
             };
             try {
@@ -2675,10 +2697,9 @@ const DIRECT_API = {
                     }
                 } catch {}
             }
-            // NARA's JSON API is currently returning their SPA HTML — documented upstream issue.
             return [{
-                title: 'NARA Catalog API temporarily returning HTML',
-                description: `The National Archives catalog API (catalog.archives.gov) is currently returning the web SPA instead of JSON for "${q}". Browse directly at the link. We check for JSON on every request and will switch back automatically when the upstream API recovers.`,
+                title: 'NARA Catalog temporarily unreachable',
+                description: `Couldn't fetch records for "${q}". Try again in a moment or browse directly on archives.gov.`,
                 date: '',
                 link: `https://catalog.archives.gov/search?q=${encodeURIComponent(q)}`
             }];
@@ -3157,10 +3178,13 @@ const CLIENT_AGENCIES = [
      sub_sections:[{id:'collections',name:'Digital Collections'}],
      endpoints:['Collections']},
     {id:'nara',name:'National Archives',acronym:'NARA',description:'Historical federal records, documents, and archival materials',
-     base_url:'https://catalog.archives.gov/api/v2',auth_required:false,has_search:true,search_placeholder:'Search historical records...',
+     base_url:'https://catalog.archives.gov',auth_required:false,has_search:true,search_placeholder:'Search 2.3M+ historical records...',
      data_categories:['Historical','Archives','Government Records'],
-     sub_sections:[{id:'records',name:'Archival Records'}],
-     endpoints:['Records']},
+     sub_sections:[
+        {id:'records',name:'Records Search'},
+        {id:'annotated',name:'Community-Annotated Records'}
+     ],
+     endpoints:['Records Search','Community Annotations']},
     {id:'dot',name:'Department of Transportation',acronym:'DOT',description:'Vehicle recalls, safety complaints, and transportation safety data via NHTSA',
      base_url:'https://api.nhtsa.gov',auth_required:false,has_search:false,
      data_categories:['Transportation','Safety','Vehicle Recalls'],
@@ -3260,13 +3284,13 @@ function renderOverview() {
     // API provider status badges
     updateApiState();
     let providerHtml = `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">`;
-    providerHtml += `<div style="padding:8px 12px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:0;font-size:10px;font-family:var(--mono);"><span style="color:var(--accent);font-weight:600;">AI Chatbot:</span> ${apiState.free.configured ? '✓ Free Mode' : '○ Free Mode'}`
+    providerHtml += `<div style="padding:8px 12px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:0;font-size:11px;font-family:var(--mono);"><span style="color:var(--accent);font-weight:600;">AI Chatbot:</span> ${apiState.free.configured ? '✓ Free Mode' : '○ Free Mode'}`
     + (apiState.openai.configured ? ` + ✓ ${apiState.openai.name.split(' ')[0]}` : '')
     + (apiState.groq.configured ? ` + ✓ ${apiState.groq.name.split(' ')[0]}` : '')
     + (apiState.gemini.configured ? ` + ✓ ${apiState.gemini.name.split(' ')[0]}` : '')
     + (apiState.claude.configured ? ` + ✓ ${apiState.claude.name.split(' ')[0]}` : '')
     + `</div>`;
-    providerHtml += `<button onclick="showApiKeyModal()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-family:var(--mono);font-size:10px;border-radius:0;cursor:pointer;">+ Add Provider</button>`;
+    providerHtml += `<button onclick="showApiKeyModal()" style="padding:8px 12px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-family:var(--mono);font-size:11px;border-radius:0;cursor:pointer;">+ Add Provider</button>`;
     providerHtml += `</div>`;
 
     // Consolidated stats box
@@ -3309,8 +3333,8 @@ function renderOverview() {
     for (const a of filtered) {
         const tags = (a.data_categories || []).map(c => `<span class="tag">${c}</span>`).join('');
         const authBadge = a.auth_required
-            ? `<span style="color:var(--warning);font-family:var(--mono);font-size:10px;">${svgIcon('lock', 10)} AUTH</span>`
-            : `<span style="color:var(--success);font-family:var(--mono);font-size:10px;">${svgIcon('unlock', 10)} OPEN</span>`;
+            ? `<span style="color:var(--warning);font-family:var(--mono);font-size:11px;">${svgIcon('lock', 10)} AUTH</span>`
+            : `<span style="color:var(--success);font-family:var(--mono);font-size:11px;">${svgIcon('unlock', 10)} OPEN</span>`;
         const endpointCount = (a.endpoints || []).length;
 
         // Live preview items
@@ -3325,7 +3349,7 @@ function renderOverview() {
             }
             previewHtml += '</div>';
         } else if (cached === undefined) {
-            previewHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-muted);animation:pulse-glow 1.5s ease-in-out infinite;">Loading previews...</div>';
+            previewHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);animation:pulse-glow 1.5s ease-in-out infinite;">Loading previews...</div>';
         }
 
         html += `<div class="agency-overview-card" onclick="selectAgency('${a.id}')">
@@ -3610,7 +3634,7 @@ function renderWizProviderCard(provider) {
             ${doc.format ? `
                 <div class="wp-input-row" style="margin-top:8px;">
                     <input id="wiz-${provider}-input" type="password" placeholder="${doc.format}" value="${existing ? existing.replace(/"/g,'&quot;') : ''}">
-                    <button class="wiz-btn" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);padding:3px 8px;font-size:10px;"
+                    <button class="wiz-btn" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);padding:3px 8px;font-size:11px;"
                         onclick="(function(b){const i=document.getElementById('wiz-${provider}-input');if(i.type==='password'){i.type='text';b.textContent='Hide';}else{i.type='password';b.textContent='Show';}})(this)">Show</button>
                 </div>
                 <div id="wiz-${provider}-validation" class="wp-validation">${existing ? `<span style="color:var(--accent-success,#10b981);">● Already saved · ${maskKey(existing)}</span>` : ''}</div>
@@ -3859,7 +3883,7 @@ function buildFetchControlsHtml() {
             <input type="date" id="fc-date-to" value="${fetchDateTo}" onchange="updateFetchDateTo(this.value)" max="${today}">
         </div>
         <div class="fc-divider"></div>
-        <button style="font-family:var(--mono);font-size:9px;padding:4px 10px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;" onclick="resetFetchControls()">Reset</button>
+        <button style="font-family:var(--mono);font-size:11px;padding:4px 10px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;" onclick="resetFetchControls()">Reset</button>
     </div>`;
 }
 
@@ -4336,7 +4360,7 @@ function renderFccDetailView(container, meta) {
         <div style="font-family:var(--mono);font-size:12px;color:var(--text-primary);">
             Equipment Authorizations <span style="color:var(--accent);">(${equipment.length})</span>
         </div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text-muted);">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text-muted);">
             Click a device to expand full details
         </div>
     </div>`;
