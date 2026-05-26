@@ -2075,10 +2075,22 @@ const DIRECT_API = {
             }
             // Form-specific browse (8-K / 10-K / 10-Q / 13F / S-1) and Full-Text Search
             // both use the (unofficial but stable) efts.sec.gov backend through our Worker.
+            // efts has no sort param — without a date filter it returns oldest filings
+            // matching the query (CVE-1999-style problem). Apply a default recent window
+            // so card view shows current-year filings first when the user hasn't filtered.
             const isFulltext = sub === 'fulltext';
             let dateFilter = '';
-            if (opts.dateFrom) dateFilter += `&dateRange=custom&startdt=${opts.dateFrom}`;
-            if (opts.dateTo) dateFilter += `&enddt=${opts.dateTo}`;
+            if (opts.dateFrom || opts.dateTo) {
+                dateFilter += `&dateRange=custom`;
+                if (opts.dateFrom) dateFilter += `&startdt=${opts.dateFrom}`;
+                if (opts.dateTo) dateFilter += `&enddt=${opts.dateTo}`;
+            } else {
+                // Default: last 120 days (efts soft cap on results becomes the recency window).
+                const today = new Date();
+                const start = new Date(today); start.setDate(today.getDate() - 120);
+                const fmt = d => d.toISOString().split('T')[0];
+                dateFilter += `&dateRange=custom&startdt=${fmt(start)}&enddt=${fmt(today)}`;
+            }
             const ft = ftFromSub.includes(sub) ? sub : '';
             let directUrl;
             if (isFulltext && query) {
@@ -2123,14 +2135,16 @@ const DIRECT_API = {
                     primary_document_url: (cikInt && accStripped && primaryDoc) ? `https://www.sec.gov/Archives/edgar/data/${cikInt}/${accStripped}/${primaryDoc}` : ''
                 };
             });
+            // Always present newest-first; efts result order isn't guaranteed.
+            const parseSorted = (d) => parseSec(d).sort((a, b) => String(b.date).localeCompare(String(a.date)));
             try {
                 const r = await fetch(directUrl, { signal: AbortSignal.timeout(6000) });
-                if (r.ok) return parseSec(await r.json());
+                if (r.ok) return parseSorted(await r.json());
             } catch {}
             try {
                 if (IS_STATIC_HOST) {
                     const r = await fetch(proxyUrl('sec', directUrl));
-                    if (r.ok) return parseSec(await r.json());
+                    if (r.ok) return parseSorted(await r.json());
                 }
             } catch {}
             return [{ title: 'SEC EDGAR temporarily unreachable', description: 'EDGAR full-text search did not respond. Try again shortly.', date: '', link: 'https://www.sec.gov/edgar/search/' }];
@@ -2189,11 +2203,14 @@ const DIRECT_API = {
                 food_recalls: 'food/enforcement.json'
             };
             const ep = endpoints[sub] || 'drug/event.json';
-            let url = `https://api.fda.gov/${ep}?limit=${lim}`;
+            // Per-endpoint date field (also drives the default newest-first sort).
+            const dateField = (sub === 'drug_events') ? 'receivedate'
+                            : (sub === 'device_510k') ? 'decision_date'
+                            : 'report_date';
+            let url = `https://api.fda.gov/${ep}?limit=${lim}&sort=${dateField}:desc`;
             if (opts.dateFrom || opts.dateTo) {
                 const df = (opts.dateFrom||'2000-01-01').replace(/-/g,'');
                 const dt = (opts.dateTo||'2099-12-31').replace(/-/g,'');
-                const dateField = (sub === 'drug_events') ? 'receivedate' : 'report_date';
                 url += `&search=${dateField}:[${df}+TO+${dt}]`;
             }
             if (query) {
@@ -2717,20 +2734,50 @@ const DIRECT_API = {
     nist: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
+            // NVD API default ordering is by CVE-ID (which sorts CVE-1999-* first).
+            // When no user date filter is set, request a recent window so users see
+            // the newest published CVEs first instead of 1999 entries.
             let url = `https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=${lim}`;
-            if (opts.dateFrom) url += `&pubStartDate=${opts.dateFrom}T00:00:00.000`;
-            if (opts.dateTo) url += `&pubEndDate=${opts.dateTo}T23:59:59.999`;
+            const today = new Date();
+            const isoDay = d => d.toISOString().split('T')[0];
+            if (opts.dateFrom) {
+                url += `&pubStartDate=${opts.dateFrom}T00:00:00.000`;
+            } else if (!query) {
+                // Default: last 60 days of published CVEs (NVD caps date span at 120 days).
+                const start = new Date(today); start.setDate(today.getDate() - 60);
+                url += `&pubStartDate=${isoDay(start)}T00:00:00.000`;
+            }
+            if (opts.dateTo) {
+                url += `&pubEndDate=${opts.dateTo}T23:59:59.999`;
+            } else if (!query && !opts.dateFrom) {
+                url += `&pubEndDate=${isoDay(today)}T23:59:59.999`;
+            }
             if (query) url += `&keywordSearch=${encodeURIComponent(query)}`;
             const r = await fetch(url);
             const d = await r.json();
-            return (d.vulnerabilities||[]).map(v => {
-                const c = v.cve||{};
-                const desc = (c.descriptions||[]).find(d=>d.lang==='en')?.value || '';
-                let cvss = '';
-                if (c.metrics?.cvssMetricV31?.[0]) cvss = c.metrics.cvssMetricV31[0].cvssData?.baseScore||'';
-                return { title: c.id||'', description: desc.substring(0,300), date: c.published||'',
-                    link: `https://nvd.nist.gov/vuln/detail/${c.id||''}`, cvss_score: cvss };
+            // Sort newest-first by publication date for consistency across cards/table.
+            const rows = (d.vulnerabilities || []).map(v => {
+                const c = v.cve || {};
+                const desc = (c.descriptions || []).find(x => x.lang === 'en')?.value || '';
+                const cvss = c.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore
+                          || c.metrics?.cvssMetricV30?.[0]?.cvssData?.baseScore
+                          || c.metrics?.cvssMetricV2?.[0]?.cvssData?.baseScore || '';
+                const severity = c.metrics?.cvssMetricV31?.[0]?.cvssData?.baseSeverity
+                              || c.metrics?.cvssMetricV30?.[0]?.cvssData?.baseSeverity || '';
+                return {
+                    title: c.id || '',
+                    description: desc.substring(0, 300),
+                    date: c.published || '',
+                    link: `https://nvd.nist.gov/vuln/detail/${c.id || ''}`,
+                    cvss_score: cvss,
+                    severity,
+                    last_modified: c.lastModified || '',
+                    cve_status: c.vulnStatus || '',
+                    cwe: (c.weaknesses?.[0]?.description || []).find(x => x.lang === 'en')?.value || ''
+                };
             });
+            rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+            return rows;
         }
     },
     fcc: {
@@ -2980,9 +3027,12 @@ const DIRECT_API = {
             // The actual working backend is at /proxy/* (same path their UI calls).
             // Returns 20 hits per request; `limit` query param BREAKS it (returns HTML),
             // so we never send it and trim client-side.
+            // Sort newest publication first so the card view doesn't open on records
+            // from the 1700s when the user hasn't picked an order. NARA's ES backend
+            // accepts &sort=newestPublication.
             const pathBySub = {
-                records:   `/proxy/records/search?q=${encodeURIComponent(q)}`,
-                annotated: `/proxy/records/search/by-contribution?q=${encodeURIComponent(q)}`,
+                records:   `/proxy/records/search?q=${encodeURIComponent(q)}&sort=newestPublication`,
+                annotated: `/proxy/records/search/by-contribution?q=${encodeURIComponent(q)}&sort=newestPublication`,
             };
             const path = pathBySub[sub] || pathBySub.records;
             const directUrl = `https://catalog.archives.gov${path}`;
@@ -3060,6 +3110,10 @@ const DIRECT_API = {
             if (opts.dateFrom) params.set('fromDateTime', `${opts.dateFrom}T00:00:00Z`);
             if (opts.dateTo) params.set('toDateTime', `${opts.dateTo}T23:59:59Z`);
             if (query && ep === 'bill') params.set('q', query);
+            // Newest-first by default for endpoints that accept sort.
+            if (ep === 'bill' || ep === 'law' || ep === 'summaries') {
+                params.set('sort', 'updateDate+desc');
+            }
             const directUrl = `https://api.congress.gov/v3/${ep}?${params}`;
             const parseCongress = (d) => {
                 const list = d.bills || d.members || d.laws || d.committees || d.summaries || [];
