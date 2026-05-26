@@ -2989,6 +2989,321 @@ const DIRECT_API = {
                 link: `https://catalog.archives.gov/search?q=${encodeURIComponent(q)}`
             }];
         }
+    },
+    // ========== Congress.gov — legislative branch (bills, members, laws, committees) ==========
+    congress: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = Math.min(opts.limit || 20, 250);
+            if (!datagovKey) {
+                return [{
+                    title: 'Congress.gov requires a data.gov API key',
+                    description: 'Get a free key at https://api.data.gov/signup/ then paste it in the wizard or API Key modal.',
+                    date: '', link: 'https://api.data.gov/signup/'
+                }];
+            }
+            const endpointMap = { bills:'bill', members:'member', laws:'law', committees:'committee', summaries:'summaries' };
+            const ep = endpointMap[sub] || 'bill';
+            const params = new URLSearchParams({ api_key: datagovKey, limit: String(lim), format: 'json' });
+            if (opts.dateFrom) params.set('fromDateTime', `${opts.dateFrom}T00:00:00Z`);
+            if (opts.dateTo) params.set('toDateTime', `${opts.dateTo}T23:59:59Z`);
+            if (query && ep === 'bill') params.set('q', query);
+            const directUrl = `https://api.congress.gov/v3/${ep}?${params}`;
+            const parseCongress = (d) => {
+                const list = d.bills || d.members || d.laws || d.committees || d.summaries || [];
+                return list.slice(0, lim).map(x => {
+                    if (ep === 'bill') {
+                        const congress = x.congress || '';
+                        const type = String(x.type || '').toLowerCase();
+                        const num = x.number || '';
+                        return {
+                            title: `${String(x.type || '').toUpperCase()} ${num} — ${x.title || 'Untitled bill'}`,
+                            description: (x.latestAction?.text || '').substring(0, 280),
+                            date: x.latestAction?.actionDate || x.updateDate || '',
+                            link: `https://www.congress.gov/bill/${congress}th-congress/${type}-bill/${num}`,
+                            congress, bill_type: x.type || '', bill_number: num,
+                            origin_chamber: x.originChamber || '',
+                            policy_area: x.policyArea?.name || '',
+                            latest_action: x.latestAction?.text || '',
+                            latest_action_date: x.latestAction?.actionDate || '',
+                            update_date: x.updateDate || ''
+                        };
+                    }
+                    if (ep === 'member') {
+                        const terms = Array.isArray(x.terms) ? x.terms : (x.terms?.item || []);
+                        const term = terms[0] || {};
+                        return {
+                            title: `${x.name || x.directOrderName || ''}${x.state ? ' (' + (x.partyName?.[0] || '?') + '-' + x.state + ')' : ''}`,
+                            description: `${term.chamber || x.terms?.[0]?.chamber || ''}${x.district ? ' · District ' + x.district : ''}`,
+                            date: x.updateDate || '',
+                            link: x.url ? String(x.url).replace('api.congress.gov/v3', 'www.congress.gov') : `https://www.congress.gov/member/${x.bioguideId || ''}`,
+                            bioguide_id: x.bioguideId || '',
+                            state: x.state || '',
+                            party: x.partyName || '',
+                            chamber: term.chamber || ''
+                        };
+                    }
+                    if (ep === 'law') {
+                        return {
+                            title: x.title || `Law (Congress ${x.congress})`,
+                            description: (x.latestAction?.text || (x.titles?.[0]?.title) || '').substring(0, 280),
+                            date: x.latestAction?.actionDate || x.updateDate || '',
+                            link: x.url ? String(x.url).replace('api.congress.gov/v3', 'www.congress.gov') : 'https://www.congress.gov/laws',
+                            congress: x.congress || '',
+                            number: x.number || ''
+                        };
+                    }
+                    if (ep === 'committee') {
+                        return {
+                            title: x.name || '(unnamed committee)',
+                            description: `${x.chamber || ''} · ${x.committeeTypeCode || ''}`,
+                            date: x.updateDate || '',
+                            link: x.url ? String(x.url).replace('api.congress.gov/v3', 'www.congress.gov') : 'https://www.congress.gov/committees',
+                            system_code: x.systemCode || '',
+                            chamber: x.chamber || ''
+                        };
+                    }
+                    return {
+                        title: x.title || x.name || '(no title)',
+                        description: (x.latestAction?.text || '').substring(0, 280),
+                        date: x.updateDate || '',
+                        link: x.url ? String(x.url).replace('api.congress.gov/v3', 'www.congress.gov') : 'https://www.congress.gov/'
+                    };
+                });
+            };
+            try {
+                const r = await fetch(directUrl, { signal: AbortSignal.timeout(8000) });
+                if (r.ok) return parseCongress(await r.json());
+            } catch {}
+            try {
+                if (IS_STATIC_HOST) {
+                    const r = await fetch(proxyUrl('congress', directUrl));
+                    if (r.ok) return parseCongress(await r.json());
+                }
+            } catch {}
+            return [{ title: 'Congress.gov temporarily unreachable', description: 'Try again shortly.', date: '', link: 'https://www.congress.gov/' }];
+        }
+    },
+    // ========== Federal Register — daily journal of US government (no key) ==========
+    fedreg: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = Math.min(opts.limit || 20, 1000);
+            const params = new URLSearchParams({ per_page: String(lim), order: 'newest', format: 'json' });
+            if (query) params.set('conditions[term]', query);
+            if (opts.dateFrom) params.set('conditions[publication_date][gte]', opts.dateFrom);
+            if (opts.dateTo)   params.set('conditions[publication_date][lte]', opts.dateTo);
+            if (sub === 'executive_orders') params.append('conditions[type][]', 'PRESDOCU');
+            if (sub === 'public_inspection') {
+                // Different endpoint for the on-deck queue.
+                const piUrl = 'https://www.federalregister.gov/api/v1/public-inspection-documents?' + params;
+                try {
+                    const r = await fetch(piUrl, { signal: AbortSignal.timeout(8000) });
+                    if (r.ok) {
+                        const d = await r.json();
+                        return (d.results || []).slice(0, lim).map(x => ({
+                            title: x.title || '(no title)',
+                            description: ((x.agencies || []).map(a => a.name).join(', ') + ' · ' + (x.type || '')).substring(0, 280),
+                            date: x.filing_date || x.publication_date || '',
+                            link: x.html_url || x.pdf_url || 'https://www.federalregister.gov/public-inspection',
+                            document_number: x.document_number || '',
+                            type: x.type || '',
+                            agencies: (x.agencies || []).map(a => a.name).join(', ')
+                        }));
+                    }
+                } catch {}
+                return [{ title: 'Federal Register public-inspection feed temporarily unreachable', description: 'Try again shortly.', date: '', link: 'https://www.federalregister.gov/public-inspection' }];
+            }
+            const directUrl = `https://www.federalregister.gov/api/v1/documents?${params}`;
+            const parseFr = (d) => (d.results || []).slice(0, lim).map(x => ({
+                title: x.title || '(no title)',
+                description: ((x.agencies || []).map(a => a.name).join(', ') + (x.abstract ? ' · ' + x.abstract : '')).substring(0, 280),
+                date: x.publication_date || '',
+                link: x.html_url || x.pdf_url || 'https://www.federalregister.gov/',
+                document_number: x.document_number || '',
+                type: x.type || '',
+                agencies: (x.agencies || []).map(a => a.name).join(', '),
+                executive_order_number: x.executive_order_number || '',
+                presidential_document_number: x.presidential_document_number || '',
+                effective_date: x.effective_on || '',
+                pdf_url: x.pdf_url || ''
+            }));
+            try {
+                const r = await fetch(directUrl, { signal: AbortSignal.timeout(8000) });
+                if (r.ok) return parseFr(await r.json());
+            } catch {}
+            if (IS_STATIC_HOST) {
+                try {
+                    const r = await fetch(proxyUrl('fedreg', directUrl));
+                    if (r.ok) return parseFr(await r.json());
+                } catch {}
+            }
+            return [{ title: 'Federal Register temporarily unreachable', description: 'Try again shortly.', date: '', link: 'https://www.federalregister.gov/' }];
+        }
+    },
+    // ========== Regulations.gov — public comments on proposed rules ==========
+    regulations: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = Math.min(opts.limit || 20, 250);
+            if (!datagovKey) {
+                return [{
+                    title: 'Regulations.gov requires a data.gov API key',
+                    description: 'Get a free key at https://api.data.gov/signup/ then paste it in the wizard or API Key modal.',
+                    date: '', link: 'https://api.data.gov/signup/'
+                }];
+            }
+            const endpointMap = { comments:'comments', dockets:'dockets', documents:'documents' };
+            const ep = endpointMap[sub] || 'comments';
+            const params = new URLSearchParams();
+            params.set('api_key', datagovKey);
+            params.set('page[size]', String(lim));
+            params.set('sort', '-postedDate');
+            if (query) params.set('filter[searchTerm]', query);
+            if (opts.dateFrom) params.set('filter[postedDate][ge]', opts.dateFrom);
+            if (opts.dateTo)   params.set('filter[postedDate][le]', opts.dateTo);
+            const directUrl = `https://api.regulations.gov/v4/${ep}?${params}`;
+            const parseReg = (d) => (d.data || []).slice(0, lim).map(x => {
+                const a = x.attributes || {};
+                return {
+                    title: a.title || a.subtype || x.id,
+                    description: (a.commentOnDocumentId ? `Comment on ${a.commentOnDocumentId} · ` : '') + (a.documentType || a.objectType || '').substring(0, 280),
+                    date: a.postedDate || a.modifyDate || '',
+                    link: `https://www.regulations.gov/${ep.replace(/s$/, '')}/${x.id}`,
+                    id: x.id,
+                    object_type: a.objectType || '',
+                    document_type: a.documentType || '',
+                    docket_id: a.docketId || '',
+                    agency: a.agencyId || '',
+                    comment_on: a.commentOnDocumentId || ''
+                };
+            });
+            try {
+                const r = await fetch(directUrl, { signal: AbortSignal.timeout(8000) });
+                if (r.ok) return parseReg(await r.json());
+            } catch {}
+            if (IS_STATIC_HOST) {
+                try {
+                    const r = await fetch(proxyUrl('regulations', directUrl));
+                    if (r.ok) return parseReg(await r.json());
+                } catch {}
+            }
+            return [{ title: 'Regulations.gov temporarily unreachable', description: 'Try again shortly or check your data.gov key.', date: '', link: 'https://www.regulations.gov/' }];
+        }
+    },
+    // ========== OpenFEMA — disaster declarations + assistance programs (no key) ==========
+    fema: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = Math.min(opts.limit || 20, 1000);
+            const datasetMap = {
+                disasters: { path: 'DisasterDeclarationsSummaries', date: 'declarationDate', titleKey: 'declarationTitle' },
+                public_assistance: { path: 'PublicAssistanceFundedProjectsDetails', date: 'declarationDate', titleKey: 'projectSize' },
+                individual_assistance: { path: 'IndividualAssistanceFundedHousingOwners', date: 'declarationDate', titleKey: 'damagedStateAbbreviation' },
+                hazard_mitigation: { path: 'HazardMitigationAssistanceProjects', date: 'dateApproved', titleKey: 'title' },
+                emergency_mgmt: { path: 'EmergencyManagementPerformanceGrants', date: 'declarationDate', titleKey: 'projectTitle' }
+            };
+            const ds = datasetMap[sub] || datasetMap.disasters;
+            const params = new URLSearchParams({ $top: String(lim), $orderby: `${ds.date} desc` });
+            const filters = [];
+            if (query) filters.push(`(contains(${ds.titleKey || 'declarationTitle'}, '${query.replace(/'/g, "''")}') or contains(state, '${query.replace(/'/g, "''")}'))`);
+            if (opts.dateFrom) filters.push(`${ds.date} ge '${opts.dateFrom}T00:00:00.000Z'`);
+            if (opts.dateTo)   filters.push(`${ds.date} le '${opts.dateTo}T23:59:59.999Z'`);
+            if (filters.length) params.set('$filter', filters.join(' and '));
+            const directUrl = `https://www.fema.gov/api/open/v2/${ds.path}?${params}`;
+            const parseFema = (d) => {
+                const rows = d[ds.path] || d.data || [];
+                return rows.slice(0, lim).map(x => ({
+                    title: x[ds.titleKey] || x.declarationTitle || x.title || x.projectTitle || `${ds.path} record`,
+                    description: [
+                        x.state ? `State: ${x.state}` : '',
+                        x.incidentType ? `Type: ${x.incidentType}` : '',
+                        x.disasterNumber ? `DR-${x.disasterNumber}` : '',
+                        x.designatedArea ? `Area: ${x.designatedArea}` : ''
+                    ].filter(Boolean).join(' · ').substring(0, 280),
+                    date: x[ds.date] || '',
+                    link: x.disasterNumber ? `https://www.fema.gov/disaster/${x.disasterNumber}` : 'https://www.fema.gov/openfema',
+                    disaster_number: x.disasterNumber || '',
+                    state: x.state || '',
+                    incident_type: x.incidentType || '',
+                    incident_begin_date: x.incidentBeginDate || '',
+                    incident_end_date: x.incidentEndDate || '',
+                    designated_area: x.designatedArea || '',
+                    fips_state_code: x.fipsStateCode || '',
+                    fips_county_code: x.fipsCountyCode || '',
+                    declaration_type: x.declarationType || '',
+                    declaration_request_number: x.declarationRequestNumber || ''
+                }));
+            };
+            try {
+                const r = await fetch(directUrl, { signal: AbortSignal.timeout(8000) });
+                if (r.ok) return parseFema(await r.json());
+            } catch {}
+            if (IS_STATIC_HOST) {
+                try {
+                    const r = await fetch(proxyUrl('fema', directUrl));
+                    if (r.ok) return parseFema(await r.json());
+                } catch {}
+            }
+            return [{ title: 'OpenFEMA temporarily unreachable', description: 'Try again shortly.', date: '', link: 'https://www.fema.gov/openfema-data-page' }];
+        }
+    },
+    // ========== eCFR — full text of federal regulations (no key) ==========
+    ecfr: {
+        fetch: async (sub, query, opts = {}) => {
+            const lim = Math.min(opts.limit || 20, 100);
+            if (sub === 'agencies') {
+                const directUrl = 'https://www.ecfr.gov/api/admin/v1/agencies.json';
+                const parseAg = (d) => (d.agencies || []).slice(0, lim).map(a => ({
+                    title: a.name || a.short_name || '(unnamed)',
+                    description: `${a.short_name || ''}${a.children?.length ? ' · ' + a.children.length + ' sub-agencies' : ''}`,
+                    date: '',
+                    link: a.slug ? `https://www.ecfr.gov/agency/${a.slug}` : 'https://www.ecfr.gov/',
+                    slug: a.slug || '',
+                    cfr_references: (a.cfr_references || []).map(r => `Title ${r.title} Chapter ${r.chapter || ''}`).join(', ')
+                }));
+                try {
+                    const r = await fetch(directUrl, { signal: AbortSignal.timeout(8000) });
+                    if (r.ok) return parseAg(await r.json());
+                } catch {}
+                if (IS_STATIC_HOST) {
+                    try {
+                        const r = await fetch(proxyUrl('ecfr', directUrl));
+                        if (r.ok) return parseAg(await r.json());
+                    } catch {}
+                }
+                return [{ title: 'eCFR Agencies temporarily unreachable', description: 'Try again shortly.', date: '', link: 'https://www.ecfr.gov/' }];
+            }
+            // Default: full-text search.
+            if (!query) {
+                return [{
+                    title: 'eCFR Search — type a keyword above',
+                    description: 'eCFR keyword search requires a query. Try "HIPAA", "section 230", "endangered species" etc.',
+                    date: '', link: 'https://www.ecfr.gov/'
+                }];
+            }
+            const params = new URLSearchParams({ query, per_page: String(lim) });
+            if (opts.dateFrom) params.set('last_modified_on_or_after', opts.dateFrom);
+            if (opts.dateTo)   params.set('last_modified_on_or_before', opts.dateTo);
+            const directUrl = `https://www.ecfr.gov/api/search/v1/results?${params}`;
+            const parseSearch = (d) => (d.results || []).slice(0, lim).map(x => ({
+                title: x.full_text_excerpt ? (x.headings?.title || x.headings?.section || 'eCFR section') : (x.headings?.title || 'eCFR result'),
+                description: (x.full_text_excerpt || '').replace(/<[^>]+>/g, '').substring(0, 280),
+                date: x.starts_on || '',
+                link: x.full_section_link ? `https://www.ecfr.gov${x.full_section_link}` : (x.section_link ? `https://www.ecfr.gov${x.section_link}` : 'https://www.ecfr.gov/'),
+                hierarchy: Object.entries(x.hierarchy || {}).map(([k,v]) => `${k}: ${v}`).join(' / '),
+                title_number: x.hierarchy?.title || '',
+                part: x.hierarchy?.part || '',
+                section: x.hierarchy?.section || ''
+            }));
+            try {
+                const r = await fetch(directUrl, { signal: AbortSignal.timeout(8000) });
+                if (r.ok) return parseSearch(await r.json());
+            } catch {}
+            if (IS_STATIC_HOST) {
+                try {
+                    const r = await fetch(proxyUrl('ecfr', directUrl));
+                    if (r.ok) return parseSearch(await r.json());
+                } catch {}
+            }
+            return [{ title: 'eCFR temporarily unreachable', description: 'Try again shortly.', date: '', link: 'https://www.ecfr.gov/' }];
+        }
     }
 };
 
@@ -3479,6 +3794,52 @@ const CLIENT_AGENCIES = [
         {id:'annotated',name:'Community-Annotated Records'}
      ],
      endpoints:['Records Search','Community Annotations']},
+    {id:'congress',name:'Congress.gov',acronym:'Congress',description:'Bills, members, laws, and committees from the US Congress (legislative branch)',
+     base_url:'https://api.congress.gov',auth_required:true,has_search:true,search_placeholder:'Search bills by keyword...',
+     data_categories:['Legislative','Bills','Government Records','Policy'],
+     sub_sections:[
+        {id:'bills',name:'Recent Bills'},
+        {id:'members',name:'Members of Congress'},
+        {id:'laws',name:'Laws Enacted'},
+        {id:'committees',name:'Committees'}
+     ],
+     endpoints:['Bills','Members','Laws','Committees']},
+    {id:'fedreg',name:'Federal Register',acronym:'FedReg',description:'Daily journal of US government — rules, proposed rules, notices, presidential documents',
+     base_url:'https://www.federalregister.gov',auth_required:false,has_search:true,search_placeholder:'Search federal documents...',
+     data_categories:['Regulatory','Rules','Executive Orders','Government Records'],
+     sub_sections:[
+        {id:'documents',name:'Latest Documents'},
+        {id:'executive_orders',name:'Presidential / Executive Orders'},
+        {id:'public_inspection',name:'On Public Inspection'}
+     ],
+     endpoints:['Documents','Executive Orders','Public Inspection']},
+    {id:'regulations',name:'Regulations.gov',acronym:'Regulations',description:'Public comments, dockets, and documents on proposed federal rules',
+     base_url:'https://api.regulations.gov',auth_required:true,has_search:true,search_placeholder:'Search comments, dockets, rules...',
+     data_categories:['Regulatory','Public Comments','Compliance'],
+     sub_sections:[
+        {id:'comments',name:'Public Comments'},
+        {id:'dockets',name:'Dockets'},
+        {id:'documents',name:'Rule Documents'}
+     ],
+     endpoints:['Comments','Dockets','Documents']},
+    {id:'fema',name:'FEMA',acronym:'FEMA',description:'Federal Emergency Management Agency — disaster declarations, individual and public assistance, hazard mitigation',
+     base_url:'https://www.fema.gov/api/open',auth_required:false,has_search:true,search_placeholder:'Search by state, incident type, or area...',
+     data_categories:['Emergency Management','Disasters','Assistance','Safety'],
+     sub_sections:[
+        {id:'disasters',name:'Disaster Declarations'},
+        {id:'public_assistance',name:'Public Assistance Projects'},
+        {id:'individual_assistance',name:'Individual Assistance'},
+        {id:'hazard_mitigation',name:'Hazard Mitigation Projects'}
+     ],
+     endpoints:['Disasters','Public Assistance','Individual Assistance','Hazard Mitigation']},
+    {id:'ecfr',name:'Electronic Code of Federal Regulations',acronym:'eCFR',description:'Full text of all current federal regulations — searchable across all 50 CFR titles',
+     base_url:'https://www.ecfr.gov',auth_required:false,has_search:true,search_placeholder:'Search CFR text (e.g. "HIPAA", "section 230")...',
+     data_categories:['Regulatory','Compliance','Legal','Government Records'],
+     sub_sections:[
+        {id:'search',name:'Full-Text Search'},
+        {id:'agencies',name:'CFR Agencies'}
+     ],
+     endpoints:['Full-Text Search','Agencies']},
     {id:'dot',name:'Department of Transportation',acronym:'DOT',description:'Vehicle recalls, safety complaints, and transportation safety data via NHTSA',
      base_url:'https://api.nhtsa.gov',auth_required:false,has_search:false,
      data_categories:['Transportation','Safety','Vehicle Recalls'],

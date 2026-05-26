@@ -17,6 +17,11 @@ const UPSTREAMS = {
   ftc:         'https://www.ftc.gov',
   nara:        'https://catalog.archives.gov',
   fcc_ecfs:    'https://publicapi.fcc.gov',
+  congress:    'https://api.congress.gov',          // legislative branch — needs data.gov key
+  fedreg:      'https://www.federalregister.gov',   // daily federal journal, no key
+  regulations: 'https://api.regulations.gov',       // public comments — needs data.gov key
+  fema:        'https://www.fema.gov',              // OpenFEMA datasets, no key
+  ecfr:        'https://www.ecfr.gov',              // electronic CFR, no key
 };
 
 // Browser-like User-Agent. Several upstreams (LOC, EPA) are behind Cloudflare or
