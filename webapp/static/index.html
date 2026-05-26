@@ -330,6 +330,17 @@
         .detail-xref-link { color: var(--accent); font-size: 11px; font-family: var(--mono); text-decoration: none; margin-right: 8px; }
         .detail-xref-link:hover { text-decoration: underline; }
         .detail-xref-date { color: var(--text-muted); font-size: 11px; font-family: var(--mono); }
+        .detail-id-chip {
+            display: inline-block; padding: 3px 9px;
+            border: 1px solid var(--accent); background: rgba(0,212,170,0.08);
+            color: var(--accent); font-family: var(--mono); font-size: 12px;
+            cursor: pointer; border-radius: 0;
+        }
+        .detail-id-chip:hover { background: var(--accent); color: var(--bg-primary); }
+        .detail-enriching {
+            font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+            margin-left: 4px;
+        }
         .data-table a {
             color: var(--accent);
             text-decoration: none;
@@ -2123,6 +2134,48 @@ const DIRECT_API = {
                 }
             } catch {}
             return [{ title: 'SEC EDGAR temporarily unreachable', description: 'EDGAR full-text search did not respond. Try again shortly.', date: '', link: 'https://www.sec.gov/edgar/search/' }];
+        },
+        // Per-record detail: pull the company submissions JSON (which carries
+        // company-wide metadata: SIC, exchanges, former names, addresses, fiscal
+        // year end, regulator) and merge it onto the filing's row.
+        fetchDetail: async (item) => {
+            const cik = item.cik || (Array.isArray(item.cik) ? item.cik[0] : '');
+            if (!cik) return item;
+            const padded = String(cik).padStart(10, '0');
+            const directUrl = `https://data.sec.gov/submissions/CIK${padded}.json`;
+            const tryFetch = async (u) => {
+                const r = await fetch(u, { signal: AbortSignal.timeout(8000) });
+                if (!r.ok) return null;
+                return r.json();
+            };
+            let data = null;
+            try { data = await tryFetch(directUrl); } catch {}
+            if (!data && IS_STATIC_HOST) {
+                try { data = await tryFetch(proxyUrl('sec_data', directUrl)); } catch {}
+            }
+            if (!data) return item;
+            return {
+                ...item,
+                entity_name: data.name || item.company || '',
+                tickers: (data.tickers || []).join(', ') || item.tickers || '',
+                exchanges: (data.exchanges || []).join(', ') || item.exchanges || '',
+                sic_code: data.sic || '',
+                sic_description: data.sicDescription || item.sic_description || '',
+                state_of_incorporation: data.stateOfIncorporationDescription || item.state_of_incorporation || '',
+                fiscal_year_end: data.fiscalYearEnd || item.fiscal_year_end || '',
+                ein: data.ein || '',
+                phone: data.phone || '',
+                website: data.website || '',
+                business_address: data.addresses?.business
+                    ? [data.addresses.business.street1, data.addresses.business.street2, data.addresses.business.city, data.addresses.business.stateOrCountry, data.addresses.business.zipCode].filter(Boolean).join(', ')
+                    : '',
+                mailing_address: data.addresses?.mailing
+                    ? [data.addresses.mailing.street1, data.addresses.mailing.street2, data.addresses.mailing.city, data.addresses.mailing.stateOrCountry, data.addresses.mailing.zipCode].filter(Boolean).join(', ')
+                    : '',
+                former_names: (data.formerNames || []).map(f => `${f.name} (until ${f.dateOfChange || '?'})`).join(' · ') || '',
+                category: data.category || '',
+                entity_type: data.entityType || ''
+            };
         }
     },
     fda: {
@@ -3186,6 +3239,60 @@ const DIRECT_API = {
                 } catch {}
             }
             return [{ title: 'Regulations.gov temporarily unreachable', description: 'Try again shortly or check your data.gov key.', date: '', link: 'https://www.regulations.gov/' }];
+        },
+        // Per-record detail: the list endpoint returns sparse attributes (e.g. no
+        // comment text). Fetching /comments/{id} returns the full record with the
+        // actual comment, tracking number, postmark, page count, organization, etc.
+        fetchDetail: async (item) => {
+            if (!datagovKey || !item.id) return item;
+            const objType = (item.object_type || 'Comment').toLowerCase();
+            const path = objType.includes('comment') ? 'comments'
+                       : objType.includes('docket')  ? 'dockets'
+                       : 'documents';
+            const url = `https://api.regulations.gov/v4/${path}/${encodeURIComponent(item.id)}?api_key=${encodeURIComponent(datagovKey)}&include=attachments`;
+            const tryFetch = async (u) => {
+                const r = await fetch(u, { signal: AbortSignal.timeout(10000) });
+                if (!r.ok) return null;
+                return r.json();
+            };
+            let d = null;
+            try { d = await tryFetch(url); } catch {}
+            if (!d && IS_STATIC_HOST) {
+                try { d = await tryFetch(proxyUrl('regulations', url)); } catch {}
+            }
+            if (!d || !d.data) return item;
+            const a = d.data.attributes || {};
+            const attachments = (d.included || [])
+                .filter(x => x.type === 'attachments')
+                .map(x => ({
+                    title: x.attributes?.title || '',
+                    file_format: (x.attributes?.fileFormats || []).map(f => f.format).join(', '),
+                    file_url: (x.attributes?.fileFormats || [])[0]?.fileUrl || ''
+                }));
+            const fullName = [a.firstName, a.lastName].filter(Boolean).join(' ');
+            return {
+                ...item,
+                comment_text: a.comment || '',
+                submitter_name: a.submitterName || fullName || '',
+                organization: a.organization || '',
+                first_name: a.firstName || '',
+                last_name: a.lastName || '',
+                city: a.city || '',
+                state_province_region: a.stateProvinceRegion || '',
+                country: a.country || '',
+                tracking_number: a.trackingNbr || '',
+                received_date: a.receiveDate || '',
+                postmark_date: a.postmarkDate || '',
+                page_count: a.pageCount || '',
+                document_subtype: a.subtype || '',
+                duplicate_comments: a.duplicateComments != null ? String(a.duplicateComments) : '',
+                category: a.category || '',
+                submitter_type: a.submitterRep ? 'Representative' : (a.submitterName ? 'Individual' : ''),
+                attachments_count: attachments.length || '',
+                attachments: attachments.length ? attachments : '',
+                rin: a.rin || '',
+                cfr_part: a.cfrPart || ''
+            };
         }
     },
     // ========== OpenFEMA — disaster declarations + assistance programs (no key) ==========
@@ -5010,36 +5117,140 @@ async function loadCrossReferences() {
 }
 
 // Render the detail view for a single record + any loaded cross-references.
+// ========== Linkable field IDs — clicking an ID navigates to that record ==========
+// Each entry maps a record-field key → a function that returns where to navigate.
+// The function receives the field value and the parent item. Return null to skip.
+const LINKABLE_FIELDS = {
+    regulations: {
+        docket_id:   (v) => ({ agency: 'regulations', sub: 'dockets',   query: String(v) }),
+        comment_on:  (v) => ({ agency: 'regulations', sub: 'documents', query: String(v) }),
+        rin:         (v) => ({ agency: 'fedreg',      sub: 'documents', query: String(v) }),
+    },
+    sec: {
+        cik:               (v) => ({ agency: 'sec', sub: 'company',  query: String(v).replace(/^0+/, '') || String(v) }),
+        accession_number:  (v) => ({ agency: 'sec', sub: 'fulltext', query: String(v) }),
+        company:           (v) => ({ agency: 'sec', sub: 'company',  query: String(v) }),
+        tickers:           (v) => ({ agency: 'sec', sub: 'company',  query: String(v).split(',')[0].trim() }),
+    },
+    fdic: {
+        fdic_certificate: (v) => ({ agency: 'fdic', sub: 'institutions', query: String(v) }),
+        acquiring_bank:   (v) => ({ agency: 'fdic', sub: 'institutions', query: String(v) }),
+    },
+    fema: {
+        disaster_number: (v) => ({ agency: 'fema', sub: 'disasters', query: 'DR-' + String(v) }),
+        state:           (v) => ({ agency: 'fema', sub: 'disasters', query: String(v) }),
+    },
+    congress: {
+        bioguide_id: (v) => ({ agency: 'congress', sub: 'members', query: String(v) }),
+        congress:    (v) => ({ agency: 'congress', sub: 'bills',   query: '' }),
+    },
+    fedreg: {
+        document_number: (v) => ({ agency: 'fedreg', sub: 'documents', query: String(v) }),
+    },
+};
+
+// Navigate to another record's view from a clickable ID. Switches agency context,
+// sets the sub-section + search query, and runs the fetch.
+async function navigateToLinkedRecord(target) {
+    if (!target || !target.agency) return;
+    const ag = agencies.find(a => a.id === target.agency);
+    if (!ag) return;
+    closeDetail();
+    currentAgency = ag;
+    currentSubSection = target.sub || (ag.sub_sections?.[0]?.id || '');
+    fetchLimit = 20;
+    fetchDateFrom = ''; fetchDateTo = '';
+    setActivePage(`agency-${ag.id}`);
+    document.getElementById('agency-title').textContent = ag.acronym || ag.name || ag.id;
+    document.getElementById('agency-source').textContent = ag.base_url || '';
+    // Render sub-tabs + search bar + fetch controls for the new agency.
+    if (typeof renderSubTabs === 'function') renderSubTabs();
+    await fetchAgencyData(target.query || '');
+    // Show a small note about what we just navigated for.
+    const rc = document.getElementById('result-count');
+    if (rc) rc.textContent = `${currentData.length} results for "${target.query}"`;
+}
+
+// Lazy detail fetch — call DIRECT_API[agency].fetchDetail(item) if it exists.
+// Re-renders the detail panel with the enriched item when done. Idempotent:
+// items are marked `_detailed` after the first successful enrichment.
+async function enrichSelectedItem() {
+    if (selectedItemIndex == null) return;
+    const item = currentData[selectedItemIndex];
+    if (!item || item._detailed) return;
+    const agencyId = currentAgency?.id;
+    const enrich = DIRECT_API[agencyId]?.fetchDetail;
+    if (typeof enrich !== 'function') { item._detailed = true; return; }
+    try {
+        const enriched = await enrich(item);
+        if (enriched && typeof enriched === 'object') {
+            // Merge enriched fields back onto the item in place so cross-ref + table see them.
+            for (const [k, v] of Object.entries(enriched)) {
+                if (v !== undefined) item[k] = v;
+            }
+        }
+    } catch (e) {
+        item._detailLoadError = e.message || String(e);
+    }
+    item._detailed = true;
+    // Only re-render if the user is still on this same record.
+    if (currentData[selectedItemIndex] === item) renderData();
+}
+
 function renderItemDetail(container) {
     const item = currentData[selectedItemIndex];
     if (!item) { closeDetail(); return; }
+    // Kick off lazy detail enrichment (async; re-renders when done).
+    if (!item._detailed) enrichSelectedItem();
+    const agencyId = currentAgency?.id;
+    const linkSpecs = LINKABLE_FIELDS[agencyId] || {};
     // Show every field except internals (keys starting with _).
     const entries = Object.entries(item).filter(([k, v]) =>
         !k.startsWith('_') && v !== null && v !== undefined && v !== ''
     );
-    const isInternal = (k) => k.startsWith('_');
+    // Render an ID value as a clickable navigation chip.
+    const renderLinkChip = (k, v) => {
+        const spec = linkSpecs[k];
+        if (!spec) return null;
+        let target = null;
+        try { target = spec(v, item); } catch {}
+        if (!target) return null;
+        const targetAgency = agencies.find(a => a.id === target.agency);
+        const label = targetAgency?.acronym || target.agency;
+        const targetJson = escapeHtml(JSON.stringify(target));
+        return `<button class="detail-id-chip" onclick='navigateToLinkedRecord(${targetJson})' title="Open in ${label}">${escapeHtml(String(v))} <span style="color:var(--text-muted);">→ ${escapeHtml(label)}</span></button>`;
+    };
     const fieldRow = (k, v) => {
-        const isLink = typeof v === 'string' && /^https?:/.test(v);
+        const chip = renderLinkChip(k, v);
         let body;
-        if (isLink) {
+        if (chip) {
+            body = chip;
+        } else if (typeof v === 'string' && /^https?:/.test(v)) {
             body = `<a href="${escapeHtml(v)}" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all;">${escapeHtml(v)} ↗</a>`;
         } else if (typeof v === 'object') {
             body = `<pre style="font-family:var(--mono);font-size:11px;color:var(--text-secondary);margin:0;white-space:pre-wrap;max-height:240px;overflow:auto;">${escapeHtml(JSON.stringify(v, null, 2))}</pre>`;
         } else {
-            body = escapeHtml(String(v));
+            // Multi-line text (e.g. a public comment) — preserve newlines.
+            const s = String(v);
+            const isLongText = s.length > 120 || s.includes('\n');
+            body = isLongText
+                ? `<div style="white-space:pre-wrap;line-height:1.5;">${escapeHtml(s)}</div>`
+                : escapeHtml(s);
         }
         return `<div class="detail-row">
             <div class="detail-key">${escapeHtml(k)}</div>
             <div class="detail-val">${body}</div>
         </div>`;
     };
+    const enrichingNow = !item._detailed && typeof DIRECT_API[agencyId]?.fetchDetail === 'function';
     let html = `
-        <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;">
+        <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <button onclick="closeDetail()" class="detail-btn">← Back to list</button>
             ${item.link ? `<a href="${escapeHtml(item.link)}" target="_blank" rel="noopener" class="detail-btn detail-btn-link">View on source ↗</a>` : ''}
             <button onclick="loadCrossReferences()" class="detail-btn detail-btn-primary" ${crossRefBusy ? 'disabled' : ''}>
                 ${crossRefBusy ? 'Searching…' : '+ Load Additional Agency Data'}
             </button>
+            ${enrichingNow ? `<span class="detail-enriching"><div class="spinner" style="display:inline-block;width:10px;height:10px;border-width:1.5px;margin-right:4px;vertical-align:middle;"></div>Loading full record…</span>` : ''}
             <span class="detail-badge">${escapeHtml(currentAgency?.acronym || currentAgency?.id || '')}</span>
         </div>
         <h2 class="detail-title">${escapeHtml(item.title || 'Record')}</h2>
