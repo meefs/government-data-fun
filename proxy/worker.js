@@ -22,6 +22,7 @@ const UPSTREAMS = {
   regulations: 'https://api.regulations.gov',       // public comments — needs data.gov key
   fema:        'https://www.fema.gov',              // OpenFEMA datasets, no key
   ecfr:        'https://www.ecfr.gov',              // electronic CFR, no key
+  fbi:         'https://api.usa.gov',                // FBI Crime Data Explorer — needs data.gov key
 };
 
 // Browser-like User-Agent. Several upstreams (LOC, EPA) are behind Cloudflare or
