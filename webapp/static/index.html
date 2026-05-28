@@ -2373,67 +2373,268 @@ const DIRECT_API = {
     bls: {
         fetch: async (sub, query, opts = {}) => {
             const lim = opts.limit || 20;
-            const seriesMap = { unemployment:'LNS14000000', cpi:'CUUR0000SA0', employment:'CES0000000001', avg_hourly_earnings:'CES0500000003' };
-            const names = { unemployment:'Unemployment Rate', cpi:'Consumer Price Index', employment:'Total Nonfarm Employment', avg_hourly_earnings:'Avg Hourly Earnings' };
-            const sid = seriesMap[sub] || seriesMap.unemployment;
-            const name = names[sub] || names.unemployment;
-            const year = new Date().getFullYear();
-            const startYear = opts.dateFrom ? parseInt(opts.dateFrom.split('-')[0]) : year - 3;
-            const endYear = opts.dateTo ? parseInt(opts.dateTo.split('-')[0]) : year;
-            const payload = JSON.stringify({seriesid:[sid], startyear:String(startYear), endyear:String(endYear)});
-            const parseBls = (d) => {
-                const series = (d.Results?.series?.[0]?.data || []).slice(0, lim);
-                return series.map(x => ({
-                    title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
-                    date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
-                }));
+            // Curated series bundles. Each sub-section fetches multiple related series
+            // in one BLS multi-series call (up to 25 series per request without a key).
+            // The original 4 IDs (unemployment/cpi/employment/avg_hourly_earnings) stay as
+            // single-series sub-sections for backward compatibility with old chat tools.
+            const BUNDLES = {
+                unemployment:        [{ id:'LNS14000000', name:'Unemployment Rate' }],
+                cpi:                 [{ id:'CUUR0000SA0', name:'Consumer Price Index' }],
+                employment:          [{ id:'CES0000000001', name:'Total Nonfarm Employment' }],
+                avg_hourly_earnings: [{ id:'CES0500000003', name:'Avg Hourly Earnings (Private)' }],
+                labor_market: [
+                    { id:'LNS14000000', name:'Unemployment Rate' },
+                    { id:'LNS11300000', name:'Labor Force Participation' },
+                    { id:'LNS12300000', name:'Employment-Population Ratio' },
+                    { id:'LNS13000000', name:'Unemployment Level' },
+                    { id:'LNS12000000', name:'Civilian Employment' },
+                ],
+                inflation: [
+                    { id:'CUUR0000SA0',     name:'CPI All Items' },
+                    { id:'CUUR0000SA0L1E',  name:'Core CPI (less food & energy)' },
+                    { id:'CWUR0000SA0',     name:'CPI-W (Urban Wage Earners)' },
+                    { id:'CUUR0000SAF1',    name:'CPI Food' },
+                    { id:'CUUR0000SAH',     name:'CPI Housing' },
+                ],
+                jolts: [
+                    { id:'JTS000000000000000JOL', name:'Job Openings' },
+                    { id:'JTS000000000000000QUL', name:'Quits' },
+                    { id:'JTS000000000000000HIL', name:'Hires' },
+                    { id:'JTS000000000000000TSL', name:'Total Separations' },
+                    { id:'JTS000000000000000LDL', name:'Layoffs & Discharges' },
+                ],
+                wages: [
+                    { id:'CES0500000003', name:'Avg Hourly Earnings (Private)' },
+                    { id:'CES0500000002', name:'Avg Weekly Hours (Private)' },
+                    { id:'CES0500000011', name:'Avg Weekly Earnings (Private)' },
+                    { id:'CIU1010000000000A', name:'Employment Cost Index' },
+                ],
+                productivity: [
+                    { id:'PRS85006092', name:'Nonfarm Business Output per Hour' },
+                    { id:'PRS85006091', name:'Nonfarm Business Unit Labor Costs' },
+                    { id:'PRS84006112', name:'Manufacturing Output per Hour' },
+                ],
+                industries: [
+                    { id:'CES4000000001', name:'Manufacturing Employment' },
+                    { id:'CES2000000001', name:'Construction Employment' },
+                    { id:'CES6000000001', name:'Professional & Business Services Employment' },
+                    { id:'CES7000000001', name:'Leisure & Hospitality Employment' },
+                    { id:'CES4300000001', name:'Transportation & Warehousing Employment' },
+                ],
+                demographics: [
+                    { id:'LNS14000003', name:'Unemployment Rate — White' },
+                    { id:'LNS14000006', name:'Unemployment Rate — Black' },
+                    { id:'LNS14000009', name:'Unemployment Rate — Hispanic' },
+                    { id:'LNS14000012', name:'Unemployment Rate — Asian' },
+                ],
             };
+            // Custom: user pastes one or more series IDs into the search box.
+            let seriesList;
+            if (sub === 'custom') {
+                if (!query) {
+                    return [{
+                        title: 'BLS Custom Series — paste a series ID',
+                        description: 'BLS Public Data API accepts series IDs like LNS14000000 (unemployment), CUUR0000SA0 (CPI), CES0000000001 (nonfarm employment). Comma-separate up to 25 series.',
+                        date: '', link: 'https://www.bls.gov/help/hlpforma.htm'
+                    }];
+                }
+                seriesList = query.split(/[\s,]+/).filter(Boolean).slice(0, 25).map(id => ({ id: id.toUpperCase(), name: id.toUpperCase() }));
+            } else {
+                seriesList = BUNDLES[sub] || BUNDLES.labor_market;
+            }
+            const seriesIds = seriesList.map(s => s.id);
+            const year = new Date().getFullYear();
+            const startYear = opts.dateFrom ? parseInt(opts.dateFrom.split('-')[0], 10) : year - 5;
+            const endYear = opts.dateTo ? parseInt(opts.dateTo.split('-')[0], 10) : year;
+            const payload = JSON.stringify({ seriesid: seriesIds, startyear: String(startYear), endyear: String(endYear) });
+
+            const parseBls = (d) => {
+                const out = [];
+                const seriesData = d.Results?.series || [];
+                // Distribute the limit across series so the most-recent N rows from each are shown.
+                const perSeries = Math.max(2, Math.ceil(lim / Math.max(seriesData.length, 1)));
+                for (const s of seriesData) {
+                    const meta = seriesList.find(x => x.id === s.seriesID) || { id: s.seriesID, name: s.seriesID };
+                    for (const x of (s.data || []).slice(0, perSeries)) {
+                        const monthPart = String(x.period || '').replace('M', '').padStart(2, '0');
+                        out.push({
+                            title: `${meta.name}: ${x.value}`,
+                            description: `${x.periodName || ''} ${x.year || ''} · Series ${s.seriesID}`.trim(),
+                            date: monthPart && /^\d{2}$/.test(monthPart) ? `${x.year}-${monthPart}-01` : `${x.year}-12-31`,
+                            link: `https://data.bls.gov/timeseries/${s.seriesID}`,
+                            series_id: s.seriesID,
+                            series_name: meta.name,
+                            value: x.value,
+                            period: x.period,
+                            period_name: x.periodName,
+                            year: x.year,
+                            footnotes: (x.footnotes || []).map(f => f.text || f.code).filter(Boolean).join('; ')
+                        });
+                    }
+                }
+                // Newest-first across all series.
+                out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+                return out.slice(0, lim);
+            };
+
             try {
                 const r = await fetch('https://api.bls.gov/publicAPI/v2/timeseries/data/', {
-                    method:'POST', headers:{'Content-Type':'application/json'}, body: payload,
-                    signal: AbortSignal.timeout(5000)
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload,
+                    signal: AbortSignal.timeout(8000)
                 });
                 if (r.ok) return parseBls(await r.json());
-            } catch (e) { /* fall through to proxy/backend */ }
+            } catch {}
             try {
                 const url = IS_STATIC_HOST
                     ? `${PROXY_BASE}/bls/publicAPI/v2/timeseries/data/`
-                    : `${API_BASE}/api/data/bls?sub_section=${sub || 'unemployment'}&limit=${lim}`;
+                    : `${API_BASE}/api/data/bls?sub_section=${sub || 'labor_market'}&limit=${lim}`;
                 const r = await fetch(url, IS_STATIC_HOST
-                    ? { method:'POST', headers:{'Content-Type':'application/json'}, body: payload }
+                    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload }
                     : {});
                 if (r.ok) {
                     const d = await r.json();
                     return IS_STATIC_HOST ? parseBls(d) : (d.data || []).map(x => ({
-                        title: `${name}: ${x.value}`, description: `Period: ${x.periodName} ${x.year}`,
-                        date: `${x.year}-${x.period?.replace('M','')}-01`, link: 'https://www.bls.gov/data/', value: x.value
+                        title: `${x.series_id || ''}: ${x.value || ''}`,
+                        description: `${x.periodName || ''} ${x.year || ''}`,
+                        date: `${x.year}-${(x.period || '').replace('M', '')}-01`,
+                        link: 'https://www.bls.gov/data/', value: x.value
                     }));
                 }
-            } catch (e2) { }
+            } catch {}
             return [{
-                title: `${name}: Data Unavailable`,
-                description: 'BLS API is temporarily unreachable. Try again shortly.',
+                title: 'BLS data temporarily unavailable',
+                description: 'The BLS Public Data API did not respond. Try again shortly.',
                 date: '', link: 'https://www.bls.gov/data/'
             }];
         }
     },
     census: {
         fetch: async (sub, query, opts = {}) => {
-            const lim = opts.limit || 20;
-            if (sub === 'income') {
-                const r = await fetch('https://api.census.gov/data/2022/acs/acs1?get=NAME,B19013_001E&for=state:*');
-                const d = await r.json();
-                return d.slice(1).sort((a,b)=>parseInt(b[1]||0)-parseInt(a[1]||0)).slice(0,lim).map(x => ({
-                    title: x[0], description: x[1] && x[1]!=='-666666666' ? `Median Household Income: $${parseInt(x[1]).toLocaleString()}` : 'Data not available',
-                    date: '2022 ACS', link: 'https://data.census.gov/'
-                }));
+            const lim = opts.limit || 60;
+            // ACS 1-year is published with a ~1-year lag (2024 data released Sept 2025).
+            // Pick the most recent vintage that's definitively available unless the user
+            // pins a date — currently 2023 ACS 1-year is the safe latest.
+            const acsYear = opts.dateFrom ? opts.dateFrom.split('-')[0] : '2023';
+            const fmtInt = (raw) => {
+                if (raw == null || raw === '' || raw === '-666666666') return null;
+                const n = parseInt(raw, 10);
+                return Number.isFinite(n) ? n.toLocaleString() : null;
+            };
+            const fmtDollar = (raw) => {
+                const n = fmtInt(raw); return n ? '$' + n : null;
+            };
+            // Bundled variable sets. Each bundle = a single Census API call for all
+            // 51 states + DC, with multiple variables returned per row.
+            const BUNDLES = {
+                population: {
+                    vars: [{ code:'B01003_001E', label:'population', fmt:fmtInt }],
+                    sortBy: 'B01003_001E',
+                    title: (r, v) => r.NAME,
+                    desc:  (r, v) => `Population (ACS ${acsYear}): ${v.population || 'n/a'}`
+                },
+                income: {
+                    vars: [
+                        { code:'B19013_001E', label:'median_household_income', fmt:fmtDollar },
+                        { code:'B19301_001E', label:'per_capita_income',       fmt:fmtDollar },
+                        { code:'B17001_002E', label:'population_below_poverty', fmt:fmtInt }
+                    ],
+                    sortBy: 'B19013_001E',
+                    title: (r, v) => r.NAME,
+                    desc:  (r, v) => `Median HH income: ${v.median_household_income || 'n/a'} · Per-capita: ${v.per_capita_income || 'n/a'} · Below poverty: ${v.population_below_poverty || 'n/a'}`
+                },
+                demographics: {
+                    vars: [
+                        { code:'B01003_001E', label:'population',          fmt:fmtInt },
+                        { code:'B01002_001E', label:'median_age',          fmt:v => v && v !== '-666666666' ? String(v) : null },
+                        { code:'B02001_002E', label:'white_alone',         fmt:fmtInt },
+                        { code:'B02001_003E', label:'black_alone',         fmt:fmtInt },
+                        { code:'B02001_005E', label:'asian_alone',         fmt:fmtInt },
+                        { code:'B03003_003E', label:'hispanic_or_latino',  fmt:fmtInt }
+                    ],
+                    sortBy: 'B01003_001E',
+                    title: (r, v) => `${r.NAME} — pop ${v.population || ''}`,
+                    desc:  (r, v) => `Median age: ${v.median_age || '?'} · White: ${v.white_alone || '?'} · Black: ${v.black_alone || '?'} · Asian: ${v.asian_alone || '?'} · Hispanic/Latino: ${v.hispanic_or_latino || '?'}`
+                },
+                housing: {
+                    vars: [
+                        { code:'B25001_001E', label:'total_housing_units',     fmt:fmtInt },
+                        { code:'B25002_002E', label:'occupied_housing_units',  fmt:fmtInt },
+                        { code:'B25002_003E', label:'vacant_housing_units',    fmt:fmtInt },
+                        { code:'B25077_001E', label:'median_home_value',       fmt:fmtDollar },
+                        { code:'B25064_001E', label:'median_gross_rent',       fmt:fmtDollar }
+                    ],
+                    sortBy: 'B25077_001E',
+                    title: (r, v) => `${r.NAME} — housing`,
+                    desc:  (r, v) => `Median home value: ${v.median_home_value || 'n/a'} · Median rent: ${v.median_gross_rent || 'n/a'}/mo · Total units: ${v.total_housing_units || 'n/a'}`
+                },
+                education: {
+                    vars: [
+                        { code:'B15003_017E', label:'high_school_grad',  fmt:fmtInt },
+                        { code:'B15003_022E', label:'bachelors_degree', fmt:fmtInt },
+                        { code:'B15003_023E', label:'masters_degree',   fmt:fmtInt },
+                        { code:'B15003_025E', label:'doctorate_degree', fmt:fmtInt }
+                    ],
+                    sortBy: 'B15003_022E',
+                    title: (r, v) => `${r.NAME} — education`,
+                    desc:  (r, v) => `HS grad: ${v.high_school_grad || '?'} · Bachelor's: ${v.bachelors_degree || '?'} · Master's: ${v.masters_degree || '?'} · Doctorate: ${v.doctorate_degree || '?'}`
+                },
+                employment: {
+                    vars: [
+                        { code:'B23025_001E', label:'population_16_plus',  fmt:fmtInt },
+                        { code:'B23025_002E', label:'in_labor_force',     fmt:fmtInt },
+                        { code:'B23025_005E', label:'unemployed',         fmt:fmtInt },
+                        { code:'B17001_002E', label:'below_poverty',      fmt:fmtInt }
+                    ],
+                    sortBy: 'B23025_002E',
+                    title: (r, v) => `${r.NAME} — employment`,
+                    desc:  (r, v) => `In labor force: ${v.in_labor_force || '?'} · Unemployed: ${v.unemployed || '?'} · Below poverty: ${v.below_poverty || '?'}`
+                }
+            };
+            const bundle = BUNDLES[sub] || BUNDLES.population;
+            const varCodes = bundle.vars.map(v => v.code).join(',');
+            const url = `https://api.census.gov/data/${acsYear}/acs/acs1?get=NAME,${varCodes}&for=state:*`;
+            try {
+                const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const data = await r.json();
+                if (!Array.isArray(data) || data.length < 2) return [];
+                const headers = data[0];
+                const idx = Object.fromEntries(headers.map((h, i) => [h, i]));
+                let rows = data.slice(1);
+                // Sort newest/highest-first by the bundle's primary metric.
+                if (bundle.sortBy && idx[bundle.sortBy] != null) {
+                    rows.sort((a, b) => parseInt(b[idx[bundle.sortBy]] || 0) - parseInt(a[idx[bundle.sortBy]] || 0));
+                }
+                if (query) {
+                    const q = query.toLowerCase();
+                    rows = rows.filter(r => String(r[idx.NAME] || '').toLowerCase().includes(q));
+                }
+                return rows.slice(0, lim).map(arr => {
+                    const row = { NAME: arr[idx.NAME], state: arr[idx.state] };
+                    for (const v of bundle.vars) row[v.code] = arr[idx[v.code]];
+                    const vals = {};
+                    for (const v of bundle.vars) vals[v.label] = v.fmt(row[v.code]);
+                    const stateFips = arr[idx.state];
+                    const item = {
+                        title: bundle.title(row, vals),
+                        description: bundle.desc(row, vals),
+                        date: `${acsYear}-12-31`,
+                        link: stateFips ? `https://data.census.gov/profile?g=040XX00US${stateFips}` : 'https://data.census.gov/',
+                        state_name: row.NAME,
+                        state_fips: stateFips,
+                        survey_year: acsYear,
+                        dataset: 'acs/acs1'
+                    };
+                    for (const [k, v] of Object.entries(vals)) if (v != null) item[k] = v;
+                    return item;
+                });
+            } catch (e) {
+                return [{
+                    title: 'Census data temporarily unavailable',
+                    description: `Could not reach ACS ${acsYear} 1-year for the "${sub || 'population'}" bundle. Try again shortly.`,
+                    date: '', link: 'https://data.census.gov/'
+                }];
             }
-            const r = await fetch('https://api.census.gov/data/2022/acs/acs1?get=NAME,B01001_001E&for=state:*');
-            const d = await r.json();
-            return d.slice(1).sort((a,b)=>parseInt(b[1]||0)-parseInt(a[1]||0)).slice(0,lim).map(x => ({
-                title: x[0], description: `Population (ACS 2022): ${parseInt(x[1]).toLocaleString()}`,
-                date: '2022', link: 'https://data.census.gov/', population: x[1]
-            }));
         }
     },
     fdic: {
@@ -4153,16 +4354,36 @@ const CLIENT_AGENCIES = [
      data_categories:['Space','Science','Imagery'],
      sub_sections:[{id:'apod',name:'Astronomy Picture of the Day'},{id:'neo',name:'Near Earth Objects'},{id:'mars',name:'Mars Rover Photos'}],
      endpoints:['APOD','NEO','Mars Photos']},
-    {id:'bls',name:'Bureau of Labor Statistics',acronym:'BLS',description:'Employment, unemployment, CPI, wages, and labor market data',
-     base_url:'https://api.bls.gov',auth_required:false,has_search:false,
-     data_categories:['Economic','Employment','Labor'],
-     sub_sections:[{id:'unemployment',name:'Unemployment Rate'},{id:'cpi',name:'Consumer Price Index'},{id:'employment',name:'Total Nonfarm Employment'},{id:'avg_hourly_earnings',name:'Average Hourly Earnings'}],
-     endpoints:['Unemployment','CPI','Employment','Wages']},
-    {id:'census',name:'US Census Bureau',acronym:'Census',description:'Population estimates, demographics, and income data',
-     base_url:'https://api.census.gov',auth_required:false,has_search:false,
-     data_categories:['Demographics','Economic','Population'],
-     sub_sections:[{id:'population',name:'Population by State'},{id:'income',name:'Median Income by State'}],
-     endpoints:['Population','Income']},
+    {id:'bls',name:'Bureau of Labor Statistics',acronym:'BLS',description:'Labor market, inflation, JOLTS, wages, productivity, industry employment, and demographic breakdowns. Curated headline indicators plus custom series-ID lookup.',
+     base_url:'https://api.bls.gov',auth_required:false,has_search:true,search_placeholder:'Paste series ID(s) for Custom view (e.g. LNS14000000, CUUR0000SA0)...',
+     data_categories:['Economic','Employment','Labor','Inflation','Productivity'],
+     sub_sections:[
+        {id:'labor_market',        name:'Labor Market Headlines'},
+        {id:'inflation',           name:'Inflation (CPI / Core / Food / Housing)'},
+        {id:'jolts',               name:'JOLTS (Openings / Quits / Hires)'},
+        {id:'wages',               name:'Wages, Hours, & Employment Cost'},
+        {id:'productivity',        name:'Productivity & Unit Labor Costs'},
+        {id:'industries',          name:'Industry Employment'},
+        {id:'demographics',        name:'Unemployment by Race/Ethnicity'},
+        {id:'unemployment',        name:'Unemployment Rate (single series)'},
+        {id:'cpi',                 name:'Consumer Price Index (single series)'},
+        {id:'employment',          name:'Total Nonfarm Employment (single series)'},
+        {id:'avg_hourly_earnings', name:'Avg Hourly Earnings (single series)'},
+        {id:'custom',              name:'Custom Series ID Lookup'}
+     ],
+     endpoints:['Labor Market','Inflation','JOLTS','Wages','Productivity','Industries','Demographics','Custom']},
+    {id:'census',name:'US Census Bureau',acronym:'Census',description:'ACS 1-year state demographics, income, housing, education, employment, and population. Each bundle returns all 51 states + DC in one fetch.',
+     base_url:'https://api.census.gov',auth_required:false,has_search:true,search_placeholder:'Filter by state name (e.g. "California")...',
+     data_categories:['Demographics','Economic','Population','Housing','Education'],
+     sub_sections:[
+        {id:'population',   name:'Population by State'},
+        {id:'demographics', name:'Demographics (race, age, ethnicity)'},
+        {id:'income',       name:'Income & Poverty'},
+        {id:'housing',      name:'Housing (value, rent, units)'},
+        {id:'education',    name:'Educational Attainment'},
+        {id:'employment',   name:'Labor Force & Unemployment'}
+     ],
+     endpoints:['Population','Demographics','Income','Housing','Education','Employment']},
     {id:'doj',name:'Department of Justice',acronym:'DOJ',description:'Indictments, charges, raids, settlements, speeches, news, and DOJ taxonomies. Press releases are the official record of federal enforcement actions.',
      base_url:'https://www.justice.gov/api/v1',auth_required:false,has_search:true,search_placeholder:'Search indictments, defendants, agencies, charges...',
      data_categories:['Legal','Law Enforcement','Policy','Enforcement'],
