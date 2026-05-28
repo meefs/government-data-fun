@@ -67,7 +67,7 @@ In the **API Key** panel you can:
 - See keys masked (`sk-···abcd`) and reveal them with a Show toggle.
 - **Revoke** any key with one click — it's wiped from memory and localStorage immediately.
 
-⚠️ Because keys live in the browser, **don't enter keys on a shared or public computer.**
+Because keys live in the browser, **don't enter keys on a shared or public computer.**
 
 ### The data.gov key (optional)
 
